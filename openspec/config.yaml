@@ -2,7 +2,7 @@ schema: spec-driven
 
 context: |
   Product: 炉石传说卡牌助手（PC Web，简中）
-  Stack: React frontend + FastAPI backend; PostgreSQL (SQLite OK for local)
+  Stack: React frontend + FastAPI backend (uv for Python deps); PostgreSQL (SQLite OK for local)
   Auth: username/password + JWT
   Card data: Blizzard official Hearthstone API only (zh_CN); sync to local DB
   Formats: Standard and Wild

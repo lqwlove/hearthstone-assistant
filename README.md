@@ -5,7 +5,7 @@
 ## 技术栈
 
 - 前端：React + Vite + TypeScript
-- 后端：FastAPI + SQLAlchemy + Alembic
+- 后端：FastAPI + SQLAlchemy + Alembic（包管理：`uv`）
 - 数据库：本地默认 SQLite，可切换 PostgreSQL
 - 卡牌数据：暴雪官方 Hearthstone API（`zh_CN`）
 - LLM：服务端统一配置（`openai` / `claude` / 本地 `mock`）
@@ -14,16 +14,16 @@
 
 ### 1. 后端
 
+需先安装 [uv](https://docs.astral.sh/uv/)（`curl -LsSf https://astral.sh/uv/install.sh | sh`）。
+
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --group dev
 cp .env.example .env
-alembic upgrade head
+uv run alembic upgrade head
 # 无暴雪凭证时，可先导入演示卡牌：
-python scripts/seed_demo_cards.py
-uvicorn app.main:app --reload --port 8000
+uv run python scripts/seed_demo_cards.py
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
 ### 2. 前端
@@ -67,8 +67,9 @@ npm run dev
 
 ```bash
 cd backend
-source .venv/bin/activate
-pytest -q
+uv run pytest -q
+# 可选 API 冒烟（需先启动服务并已有卡牌数据）：
+# bash scripts/e2e_smoke.sh http://127.0.0.1:8000
 ```
 
 ## OpenSpec

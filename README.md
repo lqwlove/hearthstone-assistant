@@ -1,27 +1,76 @@
 # Hearthstone Assistant
 
-炉石传说卡牌助手——帮助玩家更快查卡、组套与分析构筑。
+炉石传说卡牌助手（PC Web）——简中查卡、组套，以及对话式组牌助手。
 
-## 项目目标
+## 技术栈
 
-做一个面向炉石传说玩家的实用工具，覆盖卡牌检索、套牌管理，以及后续可能的构筑建议与对局相关能力。
+- 前端：React + Vite + TypeScript
+- 后端：FastAPI + SQLAlchemy + Alembic
+- 数据库：本地默认 SQLite，可切换 PostgreSQL
+- 卡牌数据：暴雪官方 Hearthstone API（`zh_CN`）
+- LLM：服务端统一配置（`openai` / `claude` / 本地 `mock`）
 
-## 计划功能
+## 快速开始
 
-- **卡牌检索**：按名称、费用、职业、稀有度、关键词等快速筛选
-- **卡牌详情**：展示属性、效果文本、系列信息与相关说明
-- **套牌管理**：创建、编辑、保存与分享套牌
-- **构筑辅助**（规划中）：根据卡池与约束给出候选卡或套牌思路
-- **数据更新**（规划中）：同步最新扩展包与平衡性调整
+### 1. 后端
 
-## 技术方向（待定）
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+alembic upgrade head
+# 无暴雪凭证时，可先导入演示卡牌：
+python scripts/seed_demo_cards.py
+uvicorn app.main:app --reload --port 8000
+```
 
-具体技术栈尚未锁定，后续会根据原型验证结果确定前端、数据源与部署方式。
+### 2. 前端
 
-## 当前状态
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-项目刚启动，仓库目前仅包含说明文档。后续会逐步补齐数据模型、界面与核心功能。
+浏览器打开 http://localhost:5173
 
-## 贡献
+### 3. 环境变量（`backend/.env`）
 
-欢迎提出想法与建议。正式开发流程（分支规范、提交约定等）将在首个功能落地前补充。
+| 变量 | 说明 |
+|------|------|
+| `DATABASE_URL` | 默认 `sqlite:///./data/app.db` |
+| `JWT_SECRET` | JWT 签名密钥 |
+| `SYNC_API_TOKEN` | 手动同步卡牌时的 `X-Sync-Token` |
+| `BLIZZARD_CLIENT_ID` / `BLIZZARD_CLIENT_SECRET` | 暴雪 API 凭证 |
+| `BLIZZARD_REGION` / `BLIZZARD_LOCALE` | 默认 `us` / `zh_CN` |
+| `LLM_PROVIDER` | `mock` / `openai` / `claude` |
+| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | 模型配置 |
+
+### 4. 首次同步官方卡牌
+
+1. 在 [Blizzard Developer Portal](https://develop.battle.net/) 创建客户端，填入 ID/Secret
+2. 注册并登录前端
+3. 在牌库页填写同步令牌（默认 `dev-sync-token`），点击「同步官方数据」
+4. 或调用：`POST /api/cards/sync`，Header：`Authorization: Bearer <jwt>` + `X-Sync-Token: <token>`
+
+## 主要功能
+
+- 注册 / 登录（JWT）
+- 牌库浏览、筛选、详情（简中）
+- 卡组草稿保存；最终保存需通过 30 张构筑规则校验（标准/狂野）
+- 独立三栏组牌页：左牌池 · 中操作区 · 右助手
+- 一套牌一条对话；助手可自由交流，也可附带结构化 `deck_patch` 改套
+
+## 测试
+
+```bash
+cd backend
+source .venv/bin/activate
+pytest -q
+```
+
+## OpenSpec
+
+规划变更见 `openspec/changes/hearthstone-assistant-mvp/`。

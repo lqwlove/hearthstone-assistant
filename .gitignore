@@ -14,3 +14,6 @@ venv/
 htmlcov/
 *.egg-info/
 .DS_Store
+backend/data/
+*.db
+frontend/dist/

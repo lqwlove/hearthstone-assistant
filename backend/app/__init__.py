@@ -1,0 +1,1 @@
+"""Hearthstone Assistant API."""

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import type { Card, ChatMessage, Deck, ValidationResult } from '../types'
+import { formatSetLabel } from '../types'
 
 type LocalCount = Record<string, number>
 
@@ -197,7 +198,9 @@ export function BuilderPage() {
               <div key={card.id} className="pool-item">
                 <div>
                   <strong>{card.cost ?? '-'} {card.name}</strong>
-                  <div className="muted" style={{ fontSize: '0.8rem' }}>{card.rarity_slug}</div>
+                  <div className="muted" style={{ fontSize: '0.8rem' }}>
+                    {formatSetLabel(card.set_slug)} · {card.rarity_slug} · #{card.id}
+                  </div>
                 </div>
                 <button
                   type="button"

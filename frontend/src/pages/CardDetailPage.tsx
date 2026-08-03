@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import type { Card } from '../types'
+import { formatSetLabel } from '../types'
 
 export function CardDetailPage() {
   const { id = '' } = useParams()
@@ -32,7 +33,11 @@ export function CardDetailPage() {
         <div>
           <h1>{card.name}</h1>
           <p className="muted">
-            {card.class_slug} · {card.rarity_slug} · {card.card_type} · {card.set_slug}
+            {card.class_slug} · {card.rarity_slug} · {card.card_type}
+          </p>
+          <p className="card-set-detail">
+            系列 <strong>{formatSetLabel(card.set_slug)}</strong>
+            <span className="card-id">ID #{card.id}</span>
           </p>
         </div>
         <div className="cost" style={{ width: 48, height: 48, fontSize: '1.2rem' }}>{card.cost ?? '-'}</div>

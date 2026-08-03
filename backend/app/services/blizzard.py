@@ -52,7 +52,42 @@ def _name(value: Any, default: str = "") -> str:
     return str(value or default)
 
 
-def map_card_payload(item: dict[str, Any], standard_set_ids: set[int]) -> dict[str, Any]:
+# Older set ids no longer returned by /metadata/sets (e.g. classic → legacy era).
+_FALLBACK_SET_NAMES: dict[int, str] = {
+    2: "基础",
+    3: "经典",
+    4: "奖励",
+    17: "英雄皮肤",
+}
+
+# Metadata often returns English even with zh_CN; normalize common reprint sets.
+_SET_NAME_ZH: dict[str, str] = {
+    "core": "核心",
+    "legacy": "怀旧",
+    "classic": "经典",
+    "expert1": "经典",
+    "basic": "基础",
+}
+
+
+def _set_display_name(set_id: int | None, set_meta: dict[str, Any] | None, item: dict[str, Any]) -> str:
+    if set_meta:
+        slug = str(set_meta.get("slug") or "").lower()
+        name = str(set_meta.get("name") or "")
+        if slug in _SET_NAME_ZH:
+            return _SET_NAME_ZH[slug]
+        if name.lower() in _SET_NAME_ZH:
+            return _SET_NAME_ZH[name.lower()]
+        return name or slug or (str(set_id) if set_id is not None else "")
+    if set_id is not None and set_id in _FALLBACK_SET_NAMES:
+        return _FALLBACK_SET_NAMES[set_id]
+    return _name(item.get("cardSet"), default="") or _slug(item.get("cardSet"), default=str(item.get("cardSetId") or ""))
+
+
+def map_card_payload(
+    item: dict[str, Any],
+    sets_by_id: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
     card_set = item.get("cardSetId")
     set_id = int(card_set) if card_set is not None else None
     class_info = item.get("classId")
@@ -64,7 +99,8 @@ def map_card_payload(item: dict[str, Any], standard_set_ids: set[int]) -> dict[s
     class_slug = _slug(item.get("class"), default=str(class_info or "neutral"))
     rarity_slug = _slug(item.get("rarity"), default=str(rarity or "common"))
     type_slug = _slug(item.get("cardType"), default=str(card_type or "minion"))
-    set_slug = _slug(item.get("cardSet"), default=str(card_set or ""))
+    set_meta = sets_by_id.get(set_id) if set_id is not None else None
+    set_slug = _set_display_name(set_id, set_meta, item)
 
     # Heuristic name mapping when only numeric ids present
     class_map = {
@@ -91,7 +127,7 @@ def map_card_payload(item: dict[str, Any], standard_set_ids: set[int]) -> dict[s
     if type_slug.isdigit():
         type_slug = type_map.get(int(type_slug), "minion")
 
-    is_standard = bool(set_id is not None and set_id in standard_set_ids)
+    is_standard = bool(set_meta.get("is_standard")) if set_meta else False
     # Collectible constructed cards are wild-legal if collectible
     collectible = bool(item.get("collectible"))
     is_wild = collectible
@@ -119,7 +155,9 @@ def map_card_payload(item: dict[str, Any], standard_set_ids: set[int]) -> dict[s
     }
 
 
-async def fetch_standard_set_ids(settings: Settings, client: httpx.AsyncClient, token: str) -> set[int]:
+async def fetch_sets_by_id(
+    settings: Settings, client: httpx.AsyncClient, token: str
+) -> dict[int, dict[str, Any]]:
     url = f"{_api_host(settings.blizzard_region)}/hearthstone/metadata/sets"
     resp = await client.get(
         url,
@@ -128,23 +166,24 @@ async def fetch_standard_set_ids(settings: Settings, client: httpx.AsyncClient, 
         timeout=60.0,
     )
     if resp.status_code >= 400:
-        # Fallback: empty set means only wild flags; sync still useful
-        return set()
+        return {}
     data = resp.json()
-    standard_ids: set[int] = set()
     items = data if isinstance(data, list) else data.get("sets", [])
+    sets_by_id: dict[int, dict[str, Any]] = {}
     for s in items:
-        if not isinstance(s, dict):
+        if not isinstance(s, dict) or s.get("id") is None:
             continue
-        # Blizzard marks sets with alias or type; prefer explicit standard flag when present
-        if s.get("isStandard") or s.get("standard") or (s.get("type") == "standard"):
-            sid = s.get("id")
-            if sid is not None:
-                standard_ids.add(int(sid))
-        # Also include sets listed under standard year aliases when provided
-        if "standard" in str(s.get("slug", "")).lower() and s.get("id") is not None:
-            standard_ids.add(int(s["id"]))
-    return standard_ids
+        sid = int(s["id"])
+        slug = str(s.get("slug") or "")
+        is_standard = bool(
+            s.get("isStandard") or s.get("standard") or (s.get("type") == "standard") or ("standard" in slug.lower())
+        )
+        sets_by_id[sid] = {
+            "name": str(s.get("name") or slug or sid),
+            "slug": slug,
+            "is_standard": is_standard,
+        }
+    return sets_by_id
 
 
 async def fetch_all_collectible_cards(
@@ -182,10 +221,10 @@ async def sync_cards_to_db(db: Session, settings: Settings) -> int:
     """
     async with httpx.AsyncClient() as client:
         token = await fetch_access_token(settings, client)
-        standard_ids = await fetch_standard_set_ids(settings, client, token)
+        sets_by_id = await fetch_sets_by_id(settings, client, token)
         raw_cards = await fetch_all_collectible_cards(settings, client, token)
 
-    mapped = [map_card_payload(item, standard_ids) for item in raw_cards if item.get("id") is not None]
+    mapped = [map_card_payload(item, sets_by_id) for item in raw_cards if item.get("id") is not None]
     if not mapped:
         raise BlizzardSyncError("官方 API 未返回可收藏卡牌")
 

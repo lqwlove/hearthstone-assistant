@@ -70,3 +70,21 @@ export const CLASS_OPTIONS = [
   { value: 'demonhunter', label: '恶魔猎手' },
   { value: 'deathknight', label: '死亡骑士' },
 ]
+
+/** Display label for card set; keeps reprints distinguishable in UI. */
+export function formatSetLabel(setSlug: string | null | undefined): string {
+  if (!setSlug) return '未知系列'
+  const key = setSlug.trim()
+  const map: Record<string, string> = {
+    '3': '经典',
+    '2': '基础',
+    '17': '英雄皮肤',
+    Core: '核心',
+    core: '核心',
+    Legacy: '怀旧',
+    legacy: '怀旧',
+    Classic: '经典',
+    classic: '经典',
+  }
+  return map[key] ?? key
+}

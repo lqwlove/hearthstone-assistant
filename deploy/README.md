@@ -4,12 +4,12 @@
 
 ## 文件
 
-| 文件 | 说明 |
-|------|------|
-| `deploy.sh` | 初始化 / 依赖 / 迁移 / 构建 / 启停重启 |
-| `env.production.example` | 生产环境变量模板 → 复制为 `backend/.env` |
-| `hearthstone-assistant.service` | systemd 单元模板 |
-| `nginx.conf.example` | Nginx：静态前端 + `/api` 反代（含 SSE） |
+| 文件                            | 说明                                     |
+| ------------------------------- | ---------------------------------------- |
+| `deploy.sh`                     | 初始化 / 依赖 / 迁移 / 构建 / 启停重启   |
+| `env.production.example`        | 生产环境变量模板 → 复制为 `backend/.env` |
+| `hearthstone-assistant.service` | systemd 单元模板                         |
+| `nginx.conf.example`            | Nginx：静态前端 + `/api` 反代（含 SSE）  |
 
 ## 推荐流程（首次）
 
@@ -64,8 +64,10 @@ RUN_MODE=pid ./deploy/deploy.sh restart
 ```
 浏览器 → Nginx(:80/:443)
            ├─ /        → frontend/dist
-           └─ /api/*   → uvicorn 127.0.0.1:8000
+           └─ /api/*   → uvicorn 127.0.0.1:8101
 ```
+
+后端默认端口为 **8101**。覆盖方式：`BACKEND_PORT=8000 ./deploy/deploy.sh restart`。
 
 SSE 对话已在 nginx 示例里关闭 `proxy_buffering`。
 

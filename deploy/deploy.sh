@@ -10,7 +10,7 @@
 # Optional env overrides:
 #   APP_ROOT=/opt/hearthstone-assistant
 #   BACKEND_HOST=127.0.0.1
-#   BACKEND_PORT=8000
+#   BACKEND_PORT=8101
 #   SERVICE_NAME=hearthstone-assistant
 #   SERVICE_USER=www-data
 #   RUN_MODE=systemd|pid   (default: systemd if available, else pid)
@@ -30,7 +30,7 @@ PID_FILE="$PID_DIR/uvicorn.pid"
 LOG_FILE="$LOG_DIR/uvicorn.log"
 
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
-BACKEND_PORT="${BACKEND_PORT:-8000}"
+BACKEND_PORT="${BACKEND_PORT:-8101}"
 SERVICE_NAME="${SERVICE_NAME:-hearthstone-assistant}"
 SERVICE_USER="${SERVICE_USER:-$(id -un)}"
 WORKERS="${WORKERS:-2}"
@@ -96,7 +96,7 @@ Commands:
 
 Environment:
   APP_ROOT          项目根目录（默认脚本上级）
-  BACKEND_PORT      后端端口（默认 8000）
+  BACKEND_PORT      后端端口（默认 8101）
   SERVICE_NAME      systemd 服务名（默认 hearthstone-assistant）
   SERVICE_USER      运行用户（默认当前用户）
   RUN_MODE          systemd | pid
@@ -195,7 +195,7 @@ cmd_install_systemd() {
     -e "s|/opt/hearthstone-assistant|$APP_ROOT|g" \
     -e "s|User=www-data|User=$SERVICE_USER|g" \
     -e "s|Group=www-data|Group=$SERVICE_USER|g" \
-    -e "s|--port 8000|--port $BACKEND_PORT|g" \
+    -e "s|--port 8101|--port $BACKEND_PORT|g" \
     -e "s|--workers 2|--workers $WORKERS|g" \
     "$unit_src" >"$tmp"
   install -m 644 "$tmp" "$unit_dst"

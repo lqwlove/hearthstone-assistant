@@ -21,6 +21,9 @@ export function AppShell() {
           <NavLink to="/decks" className={({ isActive }) => (isActive ? 'active' : '')}>
             我的卡组
           </NavLink>
+          <NavLink to="/skills" className={({ isActive }) => (isActive ? 'active' : '')}>
+            技能市场
+          </NavLink>
         </nav>
         <div className="side-nav-foot">
           <div className="user-chip">

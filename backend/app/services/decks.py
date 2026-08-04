@@ -45,6 +45,7 @@ def serialize_deck(deck: Deck) -> DeckOut:
         class_slug=deck.class_slug,
         format=deck.format,
         status=deck.status,
+        assistant_phase=getattr(deck, "assistant_phase", None) or "coaching",
         card_count=deck_card_count(list(deck.cards)),
         cards=cards_out,
         created_at=deck.created_at,

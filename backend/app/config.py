@@ -28,9 +28,36 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_model: str = "gpt-4o-mini"
 
+    # LangGraph agent memory: auto | memory | postgres
+    # auto = postgres when DATABASE_URL is postgres, else in-memory (tests/sqlite)
+    agent_memory_backend: str = "auto"
+    skill_admin_token: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def psycopg_conninfo(self) -> str | None:
+        url = self.database_url
+        if url.startswith("postgresql+psycopg://"):
+            return "postgresql://" + url.removeprefix("postgresql+psycopg://")
+        if url.startswith("postgresql://") or url.startswith("postgres://"):
+            return url
+        return None
+
+    @property
+    def use_postgres_agent_memory(self) -> bool:
+        mode = (self.agent_memory_backend or "auto").lower()
+        if mode == "memory":
+            return False
+        if mode == "postgres":
+            return True
+        return self.psycopg_conninfo is not None
+
+    @property
+    def effective_skill_admin_token(self) -> str:
+        return self.skill_admin_token or self.sync_api_token
 
 
 @lru_cache

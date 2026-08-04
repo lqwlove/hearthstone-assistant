@@ -175,8 +175,13 @@ async def fetch_sets_by_id(
             continue
         sid = int(s["id"])
         slug = str(s.get("slug") or "")
+        # Newer metadata endpoints often omit isStandard; Core is always standard-legal.
         is_standard = bool(
-            s.get("isStandard") or s.get("standard") or (s.get("type") == "standard") or ("standard" in slug.lower())
+            s.get("isStandard")
+            or s.get("standard")
+            or (s.get("type") == "standard")
+            or ("standard" in slug.lower())
+            or slug == "core"
         )
         sets_by_id[sid] = {
             "name": str(s.get("name") or slug or sid),
@@ -184,6 +189,38 @@ async def fetch_sets_by_id(
             "is_standard": is_standard,
         }
     return sets_by_id
+
+
+async def fetch_standard_card_ids(
+    settings: Settings, client: httpx.AsyncClient, token: str
+) -> set[str]:
+    """Authoritative standard legality: cards returned by Blizzard `set=standard` search."""
+    page = 1
+    page_count = 1
+    ids: set[str] = set()
+    while page <= page_count:
+        url = f"{_api_host(settings.blizzard_region)}/hearthstone/cards"
+        resp = await client.get(
+            url,
+            params={
+                "locale": settings.blizzard_locale,
+                "collectible": 1,
+                "set": "standard",
+                "page": page,
+                "pageSize": 100,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60.0,
+        )
+        if resp.status_code >= 400:
+            raise BlizzardSyncError(f"拉取标准卡池失败: HTTP {resp.status_code} {resp.text[:200]}")
+        payload = resp.json()
+        page_count = int(payload.get("pageCount") or 1)
+        for item in payload.get("cards") or []:
+            if item.get("id") is not None:
+                ids.add(str(item["id"]))
+        page += 1
+    return ids
 
 
 async def fetch_all_collectible_cards(
@@ -215,6 +252,17 @@ async def fetch_all_collectible_cards(
     return cards
 
 
+def _is_demo_card(card: Card) -> bool:
+    if card.id.startswith("demo-"):
+        return True
+    if (card.set_slug or "").lower() == "demo":
+        return True
+    name = card.name or ""
+    if "练习卡" in name or "演示" in name:
+        return True
+    return False
+
+
 async def sync_cards_to_db(db: Session, settings: Settings) -> int:
     """Fetch from Blizzard and upsert into local DB. On failure raises without partial commit preference:
     caller should rollback. We stage updates in-memory then commit once.
@@ -222,13 +270,25 @@ async def sync_cards_to_db(db: Session, settings: Settings) -> int:
     async with httpx.AsyncClient() as client:
         token = await fetch_access_token(settings, client)
         sets_by_id = await fetch_sets_by_id(settings, client, token)
+        standard_ids = await fetch_standard_card_ids(settings, client, token)
         raw_cards = await fetch_all_collectible_cards(settings, client, token)
 
     mapped = [map_card_payload(item, sets_by_id) for item in raw_cards if item.get("id") is not None]
     if not mapped:
         raise BlizzardSyncError("官方 API 未返回可收藏卡牌")
 
+    # Prefer Blizzard's standard search over incomplete set metadata.
+    for row in mapped:
+        row["is_standard"] = row["id"] in standard_ids
+
     existing = {c.id: c for c in db.scalars(select(Card)).all()}
+    official_ids = {row["id"] for row in mapped}
+
+    # Remove leftover local demo/seed cards that pollute builder pools.
+    for card in list(existing.values()):
+        if card.id not in official_ids and _is_demo_card(card):
+            db.delete(card)
+
     for row in mapped:
         card = existing.get(row["id"])
         if card is None:

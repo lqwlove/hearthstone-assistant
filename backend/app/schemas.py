@@ -83,6 +83,7 @@ class DeckOut(BaseModel):
     class_slug: str
     format: str
     status: str
+    assistant_phase: str = "coaching"
     card_count: int
     cards: list[DeckCardOut] = []
     created_at: datetime | None = None
@@ -120,8 +121,9 @@ class ChatMessageOut(BaseModel):
 
 
 class ChatHistoryResponse(BaseModel):
-    thread_id: int
+    thread_id: str
     messages: list[ChatMessageOut]
+    phase: Literal["coaching", "building"] = "coaching"
 
 
 class ChatSendRequest(BaseModel):
@@ -133,3 +135,37 @@ class ChatSendResponse(BaseModel):
     deck: DeckOut | None = None
     patch_applied: bool = False
     patch_error: str | None = None
+    phase: Literal["coaching", "building"] = "coaching"
+
+
+class PhaseResponse(BaseModel):
+    deck_id: int
+    phase: Literal["coaching", "building"]
+
+
+class SkillPackSubmit(BaseModel):
+    slug: str = Field(min_length=2, max_length=128, pattern=r"^[a-z0-9][a-z0-9\-]*$")
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=2000)
+    version: str = Field(default="1.0.0", max_length=64)
+    skill_md: str = Field(min_length=1, max_length=200_000)
+
+
+class SkillPackOut(BaseModel):
+    id: int
+    slug: str
+    name: str
+    description: str
+    version: str
+    status: str
+    author_user_id: int
+    review_note: str | None = None
+    created_at: datetime | None = None
+    reviewed_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class SkillPackReview(BaseModel):
+    status: Literal["approved", "rejected", "unpublished"]
+    review_note: str | None = None

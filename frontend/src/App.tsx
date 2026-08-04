@@ -8,6 +8,7 @@ import { DecksPage } from './pages/DecksPage'
 import { LibraryPage } from './pages/LibraryPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { SkillsPage } from './pages/SkillsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   if (!getToken()) return <Navigate to="/login" replace />
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/cards/:id" element={<CardDetailPage />} />
         <Route path="/decks" element={<DecksPage />} />
+        <Route path="/skills" element={<SkillsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/library" replace />} />
     </Routes>

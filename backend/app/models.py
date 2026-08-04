@@ -58,6 +58,9 @@ class Deck(Base):
     class_slug: Mapped[str] = mapped_column(String(64))
     format: Mapped[str] = mapped_column(String(32))  # standard | wild
     status: Mapped[str] = mapped_column(String(32), default="draft")  # draft | completed
+    assistant_phase: Mapped[str] = mapped_column(
+        String(32), default="coaching"
+    )  # coaching | building
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -112,3 +115,22 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     thread: Mapped[ChatThread] = relationship(back_populates="messages")
+
+
+class SkillPack(Base):
+    __tablename__ = "skill_packs"
+    __table_args__ = (UniqueConstraint("slug", "version", name="uq_skill_pack_slug_version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[str] = mapped_column(String(64), default="1.0.0")
+    status: Mapped[str] = mapped_column(
+        String(32), default="pending", index=True
+    )  # pending | approved | rejected | unpublished
+    author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    skill_md: Mapped[str] = mapped_column(Text)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

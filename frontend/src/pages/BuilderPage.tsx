@@ -1,11 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { ConfigProvider, theme } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
 import { api } from '../api'
-import type { Card, ChatMessage, Deck, ValidationResult } from '../types'
-import { formatSetLabel } from '../types'
+import { DeckAssistantChat } from '../components/DeckAssistantChat'
+import type { AssistantPhase, Card, ChatMessage, Deck, ValidationResult } from '../types'
+import { CLASS_OPTIONS, formatSetLabel } from '../types'
 
 type LocalCount = Record<string, number>
+
+async function loadBuilderPool(classSlug: string, format: string): Promise<Card[]> {
+  const pageSize = 100
+  const all: Card[] = []
+  let page = 1
+  let total = Infinity
+  while (all.length < total) {
+    const res = await api.listCards({
+      class_slug: classSlug,
+      include_neutral: true,
+      format,
+      page,
+      page_size: pageSize,
+    })
+    total = res.total
+    all.push(...res.items)
+    if (res.items.length === 0) break
+    page += 1
+    if (page > 50) break
+  }
+  return all.sort((a, b) => (a.cost ?? 99) - (b.cost ?? 99) || a.name.localeCompare(b.name, 'zh'))
+}
 
 export function BuilderPage() {
   const { id = '' } = useParams()
@@ -15,7 +39,7 @@ export function BuilderPage() {
   const [pool, setPool] = useState<Card[]>([])
   const [q, setQ] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [chatInput, setChatInput] = useState('')
+  const [phase, setPhase] = useState<AssistantPhase>('coaching')
   const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -33,33 +57,12 @@ export function BuilderPage() {
   }
 
   async function loadAll() {
-    const [d, chat, cards] = await Promise.all([
-      api.getDeck(deckId),
-      api.getChat(deckId),
-      api.listCards({
-        format: undefined,
-        page: 1,
-        page_size: 100,
-      }),
-    ])
+    const [d, chat] = await Promise.all([api.getDeck(deckId), api.getChat(deckId)])
     applyDeck(d)
     setMessages(chat.messages)
-    // Prefer class + neutral for builder pool
-    const classPool = await api.listCards({
-      class_slug: d.class_slug,
-      format: d.format,
-      page: 1,
-      page_size: 80,
-    })
-    const neutralPool = await api.listCards({
-      class_slug: 'neutral',
-      format: d.format,
-      page: 1,
-      page_size: 80,
-    })
-    const map = new Map<string, Card>()
-    ;[...classPool.items, ...neutralPool.items, ...cards.items].forEach((c) => map.set(c.id, c))
-    setPool([...map.values()].sort((a, b) => (a.cost ?? 99) - (b.cost ?? 99)))
+    setPhase(chat.phase || (d.assistant_phase as AssistantPhase) || 'coaching')
+    const cards = await loadBuilderPool(d.class_slug, d.format)
+    setPool(cards)
   }
 
   useEffect(() => {
@@ -133,23 +136,29 @@ export function BuilderPage() {
     }
   }
 
-  async function onChat(e: FormEvent) {
-    e.preventDefault()
-    if (!chatInput.trim()) return
+  async function startBuilding() {
     setBusy(true)
     setError('')
     try {
-      // persist current draft first so assistant sees latest
-      const cards = Object.entries(counts).map(([card_id, count]) => ({ card_id, count }))
-      await api.saveDraft(deckId, { cards })
-      const res = await api.sendChat(deckId, chatInput.trim())
-      setMessages((prev) => [...prev, ...res.messages])
-      setChatInput('')
-      if (res.deck) applyDeck(res.deck)
-      if (res.patch_error) setStatus(`助手回复已保存，但改套未应用：${res.patch_error}`)
-      else if (res.patch_applied) setStatus('助手已更新卡组草稿')
+      const res = await api.startBuilding(deckId)
+      setPhase(res.phase)
+      setStatus('已进入组牌阶段，助手可以改套了')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '对话失败')
+      setError(err instanceof Error ? err.message : '切换失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function returnToCoaching() {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await api.returnToCoaching(deckId)
+      setPhase(res.phase)
+      setStatus('已回到澄清阶段，改套已禁用')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '切换失败')
     } finally {
       setBusy(false)
     }
@@ -166,113 +175,138 @@ export function BuilderPage() {
     )
   }
 
+  const classLabel = CLASS_OPTIONS.find((c) => c.value === deck.class_slug)?.label || deck.class_slug
+
   return (
-    <div className="builder-page">
-      <header className="builder-top">
-        <Link to="/decks">← 返回</Link>
-        <strong>{deck.name}</strong>
-        <div className="meta">
-          <span>{deck.class_slug}</span>
-          <span>{deck.format === 'standard' ? '标准' : '狂野'}</span>
-          <span>{total}/30</span>
-          <span>{deck.status === 'completed' ? '已完成' : '草稿'}</span>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
-          <button type="button" className="secondary" disabled={busy} onClick={() => void saveDraft()}>
-            保存草稿
-          </button>
-          <button type="button" disabled={busy} onClick={() => void finalize()}>
-            最终保存
-          </button>
-        </div>
-      </header>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        algorithm: theme.defaultAlgorithm,
+        token: { colorPrimary: '#b45309', borderRadius: 8 },
+      }}
+    >
+      <div className="builder-page">
+        <header className="builder-top">
+          <Link to="/decks">← 返回</Link>
+          <strong>{deck.name}</strong>
+          <div className="meta">
+            <span>{classLabel}</span>
+            <span>{deck.format === 'standard' ? '标准' : '狂野'}</span>
+            <span>{total}/30</span>
+            <span>{deck.status === 'completed' ? '已完成' : '草稿'}</span>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+            <button type="button" className="secondary" disabled={busy} onClick={() => void saveDraft()}>
+              保存草稿
+            </button>
+            <button type="button" disabled={busy} onClick={() => void finalize()}>
+              最终保存
+            </button>
+          </div>
+        </header>
 
-      <div className="builder-body">
-        <section className="builder-col">
-          <h2>可选牌池</h2>
-          <input placeholder="搜索牌池" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
-          {filteredPool.map((card) => {
-            const n = counts[card.id] || 0
-            const max = card.rarity_slug === 'legendary' ? 1 : 2
-            return (
-              <div key={card.id} className="pool-item">
-                <div>
-                  <strong>{card.cost ?? '-'} {card.name}</strong>
-                  <div className="muted" style={{ fontSize: '0.8rem' }}>
-                    {formatSetLabel(card.set_slug)} · {card.rarity_slug} · #{card.id}
+        <div className="builder-body">
+          <section className="builder-col">
+            <h2>可选牌池</h2>
+            <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+              {classLabel} + 中立 · {deck.format === 'standard' ? '标准' : '狂野'}（共 {pool.length} 张）
+            </p>
+            <input
+              placeholder="搜索牌池"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ marginBottom: 12 }}
+            />
+            <div className="builder-pool-list">
+              {filteredPool.map((card) => {
+                const n = counts[card.id] || 0
+                const max = card.rarity_slug === 'legendary' ? 1 : 2
+                return (
+                  <div key={card.id} className="pool-item">
+                    <div className="pool-item-art">
+                      {card.image_url ? (
+                        <img src={card.image_url} alt={card.name} loading="lazy" />
+                      ) : (
+                        <span className="pool-item-cost">{card.cost ?? '-'}</span>
+                      )}
+                    </div>
+                    <div className="pool-item-meta">
+                      <strong>
+                        {card.cost ?? '-'} {card.name}
+                      </strong>
+                      <div className="muted" style={{ fontSize: '0.8rem' }}>
+                        {formatSetLabel(card.set_slug)} · {card.rarity_slug} · #{card.id}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={n >= max}
+                      onClick={() => setCount(card.id, Math.min(max, n + 1))}
+                    >
+                      +{n > 0 ? ` (${n})` : ''}
+                    </button>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={n >= max}
-                  onClick={() => setCount(card.id, Math.min(max, n + 1))}
-                >
-                  +{n > 0 ? ` (${n})` : ''}
-                </button>
-              </div>
-            )
-          })}
-          {filteredPool.length === 0 && <p className="muted">牌池为空。请先在牌库页同步或导入卡牌数据。</p>}
-        </section>
-
-        <section className="builder-col">
-          <h2>组牌操作区</h2>
-          {status && <p className="ok">{status}</p>}
-          {error && <p className="error">{error}</p>}
-          {validation && !validation.valid && (
-            <ul className="violations">
-              {validation.violations.map((v) => (
-                <li key={v}>{v}</li>
-              ))}
-            </ul>
-          )}
-          {deckLines.map(({ cardId, count, card }) => (
-            <div key={cardId} className="deck-line">
-              <span>
-                {card?.cost ?? '-'} {card?.name || cardId} ×{count}
-              </span>
-              <span style={{ display: 'flex', gap: 4 }}>
-                <button type="button" className="ghost" onClick={() => setCount(cardId, count - 1)}>-</button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => setCount(cardId, count + 1)}
-                  disabled={count >= (card?.rarity_slug === 'legendary' ? 1 : 2)}
-                >
-                  +
-                </button>
-              </span>
+                )
+              })}
             </div>
-          ))}
-          {deckLines.length === 0 && <p className="muted">从左侧加入卡牌，或让右侧助手协助构筑。</p>}
-        </section>
+            {filteredPool.length === 0 && (
+              <p className="muted">当前英雄/模式下牌池为空。请先在牌库页同步官方卡牌。</p>
+            )}
+          </section>
 
-        <section className="builder-col">
-          <h2>组牌助手</h2>
-          <div className="chat-log">
-            {messages.map((m) => (
-              <div key={m.id} className={`bubble ${m.role === 'user' ? 'user' : ''}`}>
-                <div className="muted" style={{ fontSize: '0.75rem', marginBottom: 4 }}>
-                  {m.role === 'user' ? '你' : '助手'}
-                  {m.patch_applied ? ' · 已改套' : ''}
-                  {m.patch_error ? ` · 改套失败: ${m.patch_error}` : ''}
-                </div>
-                {m.content}
+          <section className="builder-col">
+            <h2>组牌操作区</h2>
+            {status && <p className="ok">{status}</p>}
+            {error && <p className="error">{error}</p>}
+            {validation && !validation.valid && (
+              <ul className="violations">
+                {validation.violations.map((v) => (
+                  <li key={v}>{v}</li>
+                ))}
+              </ul>
+            )}
+            {deckLines.map(({ cardId, count, card }) => (
+              <div key={cardId} className="deck-line">
+                <span>
+                  {card?.cost ?? '-'} {card?.name || cardId} ×{count}
+                </span>
+                <span style={{ display: 'flex', gap: 4 }}>
+                  <button type="button" className="ghost" onClick={() => setCount(cardId, count - 1)}>
+                    -
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => setCount(cardId, count + 1)}
+                    disabled={count >= (card?.rarity_slug === 'legendary' ? 1 : 2)}
+                  >
+                    +
+                  </button>
+                </span>
               </div>
             ))}
-          </div>
-          <form className="chat-form" onSubmit={onChat}>
-            <textarea
-              rows={3}
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="聊聊构筑方向，或说「加入改套」让 mock 助手演示改牌…"
+            {deckLines.length === 0 && <p className="muted">从左侧加入卡牌，或让右侧助手协助构筑。</p>}
+          </section>
+
+          <section className="builder-col builder-chat-col">
+            <DeckAssistantChat
+              deckId={deckId}
+              phase={phase}
+              history={messages}
+              busy={busy}
+              onBusyChange={setBusy}
+              onPhaseChange={setPhase}
+              onDeckUpdate={applyDeck}
+              onStatus={setStatus}
+              onError={setError}
+              onStartBuilding={() => void startBuilding()}
+              onReturnToCoaching={() => void returnToCoaching()}
+              persistDraft={persistDraft}
             />
-            <button type="submit" disabled={busy || !chatInput.trim()}>发送</button>
-          </form>
-        </section>
+          </section>
+        </div>
       </div>
-    </div>
+    </ConfigProvider>
   )
 }

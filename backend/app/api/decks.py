@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Card, ChatThread, Deck, User
+from app.models import Card, Deck, User
 from app.schemas import (
     DeckCreate,
     DeckOut,
@@ -34,10 +34,9 @@ def create_deck(
         class_slug=body.class_slug,
         format=body.format,
         status="draft",
+        assistant_phase="coaching",
     )
     db.add(deck)
-    db.flush()
-    db.add(ChatThread(deck_id=deck.id))
     db.commit()
     db.refresh(deck)
     return serialize_deck(deck)

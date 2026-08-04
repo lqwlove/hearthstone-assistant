@@ -1,8 +1,10 @@
 import type {
+  AssistantPhase,
   Card,
   CardListResponse,
   ChatMessage,
   Deck,
+  SkillPack,
   TokenResponse,
   ValidationResult,
 } from './types'
@@ -62,7 +64,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
-  listCards: (params: Record<string, string | number | undefined>) => {
+  listCards: (params: Record<string, string | number | boolean | undefined>) => {
     const qs = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== '') qs.set(k, String(v))
@@ -85,12 +87,37 @@ export const api = {
   finalizeDeck: (id: number) =>
     request<{ deck: Deck; validation: ValidationResult }>(`/api/decks/${id}/finalize`, { method: 'POST' }),
   getChat: (deckId: number) =>
-    request<{ thread_id: number; messages: ChatMessage[] }>(`/api/decks/${deckId}/chat`),
+    request<{ thread_id: string; messages: ChatMessage[]; phase: AssistantPhase }>(
+      `/api/decks/${deckId}/chat`,
+    ),
   sendChat: (deckId: number, content: string) =>
     request<{
       messages: ChatMessage[]
       deck: Deck | null
       patch_applied: boolean
       patch_error?: string | null
+      phase: AssistantPhase
     }>(`/api/decks/${deckId}/chat`, { method: 'POST', body: JSON.stringify({ content }) }),
+  startBuilding: (deckId: number) =>
+    request<{ deck_id: number; phase: AssistantPhase }>(`/api/decks/${deckId}/chat/start-building`, {
+      method: 'POST',
+    }),
+  returnToCoaching: (deckId: number) =>
+    request<{ deck_id: number; phase: AssistantPhase }>(
+      `/api/decks/${deckId}/chat/return-to-coaching`,
+      { method: 'POST' },
+    ),
+  listMySkillPacks: () => request<SkillPack[]>('/api/skills/market/mine'),
+  listPublicSkillPacks: () => request<SkillPack[]>('/api/skills/market'),
+  submitSkillPack: (body: {
+    slug: string
+    name: string
+    description?: string
+    version?: string
+    skill_md: string
+  }) =>
+    request<SkillPack>('/api/skills/market', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 }

@@ -32,14 +32,28 @@ export type DeckCard = {
   card?: Card | null
 }
 
+export type AssistantPhase = 'coaching' | 'building'
+
 export type Deck = {
   id: number
   name: string
   class_slug: string
   format: 'standard' | 'wild' | string
   status: 'draft' | 'completed' | string
+  assistant_phase?: AssistantPhase | string
   card_count: number
   cards: DeckCard[]
+}
+
+export type SkillPack = {
+  id: number
+  slug: string
+  name: string
+  description: string
+  version: string
+  status: string
+  author_user_id: number
+  review_note?: string | null
 }
 
 export type ValidationResult = {

@@ -11,14 +11,20 @@ os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["JWT_SECRET"] = "test-secret"
 os.environ["SYNC_API_TOKEN"] = "test-sync"
 os.environ["LLM_PROVIDER"] = "mock"
+os.environ["AGENT_MEMORY_BACKEND"] = "memory"
 
+from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import Card
+from app.services.deck_agent.memory import ensure_agent_memory_ready, reset_agent_memory_for_tests
 
 
 @pytest.fixture()
 def client():
+    get_settings.cache_clear()
+    reset_agent_memory_for_tests()
+    ensure_agent_memory_ready(get_settings())
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -141,16 +147,26 @@ def test_deck_draft_finalize_and_chat(client: TestClient):
     assert final.status_code == 200
     assert final.json()["deck"]["status"] == "completed"
 
-    # chat with mock patch
+    # chat: coaching first, then start building for mock patch
     chat = client.post(
         f"/api/decks/{deck_id}/chat",
         headers=headers,
-        json={"content": "请帮我改套加入卡牌"},
+        json={"content": "我想打中速"},
     )
     assert chat.status_code == 200
     body = chat.json()
     assert len(body["messages"]) == 2
     assert body["messages"][1]["role"] == "assistant"
+    assert body["phase"] == "coaching"
+
+    assert client.post(f"/api/decks/{deck_id}/chat/start-building", headers=headers).status_code == 200
+    patched = client.post(
+        f"/api/decks/{deck_id}/chat",
+        headers=headers,
+        json={"content": "请帮我改套加入卡牌"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["patch_applied"] is True
 
     hist = client.get(f"/api/decks/{deck_id}/chat", headers=headers)
     assert hist.status_code == 200

@@ -33,8 +33,9 @@ BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${BACKEND_PORT:-8101}"
 SERVICE_NAME="${SERVICE_NAME:-hearthstone-assistant}"
 SERVICE_USER="${SERVICE_USER:-$(id -un)}"
-WORKERS="${WORKERS:-2}"
+WORKERS="${WORKERS:-1}"
 SKIP_GIT_PULL="${SKIP_GIT_PULL:-0}"
+HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -101,7 +102,8 @@ Environment:
   SERVICE_USER      运行用户（默认当前用户）
   RUN_MODE          systemd | pid
   SKIP_GIT_PULL=1   deploy 时跳过 git pull
-  WORKERS           uvicorn workers（默认 2）
+  WORKERS           uvicorn workers（默认 1）
+  HEALTH_RETRIES    health 重试秒数（默认 30）
 EOF
 }
 
@@ -206,16 +208,30 @@ cmd_install_systemd() {
   warn "请确认用户 $SERVICE_USER 对 $APP_ROOT 有读/执行权限"
 }
 
+uvicorn_bin() {
+  if [[ -x "$BACKEND_DIR/.venv/bin/uvicorn" ]]; then
+    echo "$BACKEND_DIR/.venv/bin/uvicorn"
+  else
+    echo ""
+  fi
+}
+
 pid_start() {
   ensure_dirs
   if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     warn "后端已在运行 (pid $(cat "$PID_FILE"))"
     return 0
   fi
-  log "以 pid 模式启动 uvicorn ($BACKEND_HOST:$BACKEND_PORT)"
+  local bin
+  bin="$(uvicorn_bin)"
+  [[ -n "$bin" ]] || die "未找到 $BACKEND_DIR/.venv/bin/uvicorn，请先执行: $0 deps"
+
+  : >"$LOG_FILE"
+  log "以 pid 模式启动 uvicorn ($BACKEND_HOST:$BACKEND_PORT, workers=$WORKERS)"
   (
     cd "$BACKEND_DIR"
-    nohup uv run uvicorn app.main:app \
+    # Prefer venv binary so PID is the real uvicorn master (not a short-lived uv wrapper).
+    nohup "$bin" app.main:app \
       --host "$BACKEND_HOST" \
       --port "$BACKEND_PORT" \
       --workers "$WORKERS" \
@@ -226,6 +242,8 @@ pid_start() {
   if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     ok "已启动 pid=$(cat "$PID_FILE")，日志: $LOG_FILE"
   else
+    warn "进程似乎已退出，最近日志："
+    tail -n 80 "$LOG_FILE" || true
     die "启动失败，请查看 $LOG_FILE"
   fi
 }
@@ -336,13 +354,30 @@ cmd_logs() {
 }
 
 cmd_health() {
+  need_cmd curl
   local url="http://${BACKEND_HOST}:${BACKEND_PORT}/api/health"
-  log "健康检查 $url"
-  if curl -sf "$url" | grep -q ok; then
-    ok "health ok"
+  local retries="${HEALTH_RETRIES:-30}"
+  local i body
+  log "健康检查 $url （最多 ${retries}s）"
+  for i in $(seq 1 "$retries"); do
+    if body="$(curl -sf --max-time 2 "$url" 2>/dev/null)" && grep -q '"status"[[:space:]]*:[[:space:]]*"ok"\|ok' <<<"$body"; then
+      ok "health ok ($body)"
+      return 0
+    fi
+    # process died early
+    if [[ -f "$PID_FILE" ]] && ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+      warn "后端进程已退出"
+      break
+    fi
+    sleep 1
+  done
+  warn "health 失败。最近日志 ($LOG_FILE)："
+  if [[ -f "$LOG_FILE" ]]; then
+    tail -n 100 "$LOG_FILE" || true
   else
-    die "health 失败"
+    warn "日志文件不存在"
   fi
+  die "health 失败：请根据上方日志排查（常见：DATABASE_URL 连不上、.env 缺失、端口被占用、迁移未执行）"
 }
 
 cmd_deploy() {

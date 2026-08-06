@@ -72,10 +72,10 @@ class MockCoachModel(BaseChatModel):
                 break
 
         phase = self._phase_from_messages(messages)
-        wants_patch = any(k in user_text for k in ("改套", "加入", "patch", "加一张", "加上"))
+        wants_patch = any(k in user_text for k in ("改套", "加入", "patch", "加一张", "加上", "开始组"))
         tool_names = {getattr(t, "name", None) for t in self.bound_tools}
 
-        if phase == "building" and wants_patch and "apply_deck_patch" in tool_names:
+        if wants_patch and "apply_deck_patch" in tool_names:
             args = {
                 "ops": [{"op": "set_count", "card_id": self.sample_card_id, "count": 1}],
             }
@@ -110,13 +110,13 @@ class MockCoachModel(BaseChatModel):
             )
             return ChatResult(generations=[ChatGeneration(message=msg)])
 
-        if phase == "coaching":
+        if phase == "coaching" and not wants_patch:
             content = (
-                "【澄清阶段】先确认你的目标：想打什么节奏（快攻/中速/控制）？"
-                "有没有禁卡或必带卡？确认后请点击「开始组牌」。"
+                "【澄清】先确认目标：想打什么节奏（快攻/中速/控制）或具体流派？"
+                "有没有禁卡或必带卡？信息够了我就会直接往卡组里加牌。"
             )
         else:
-            content = "【组牌阶段】可以说具体想加/换哪张牌；提到「改套」时我会调用改套工具。"
+            content = "可以说想加/换/删哪张牌；我会用改套工具增量更新草稿。"
 
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
 

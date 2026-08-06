@@ -36,9 +36,11 @@ async def sync_cards(
 def list_cards(
     q: str | None = None,
     cost: int | None = None,
+    cost_min: int | None = None,
     class_slug: str | None = None,
     include_neutral: bool = Query(default=False),
     rarity_slug: str | None = None,
+    card_type: str | None = None,
     format: str | None = Query(default=None, pattern="^(standard|wild)$"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=40, ge=1, le=100),
@@ -49,6 +51,8 @@ def list_cards(
         filters.append(Card.name.contains(q))
     if cost is not None:
         filters.append(Card.cost == cost)
+    if cost_min is not None:
+        filters.append(Card.cost >= cost_min)
     if class_slug:
         if include_neutral:
             filters.append(Card.class_slug.in_([class_slug, "neutral"]))
@@ -56,6 +60,8 @@ def list_cards(
             filters.append(Card.class_slug == class_slug)
     if rarity_slug:
         filters.append(Card.rarity_slug == rarity_slug)
+    if card_type:
+        filters.append(Card.card_type == card_type)
     if format == "standard":
         filters.append(Card.is_standard.is_(True))
     elif format == "wild":

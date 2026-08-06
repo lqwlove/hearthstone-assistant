@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app import database
 from app.config import Settings, get_settings
 from app.services.deck_agent.runtime import _create_agent, _message_text, thread_id_for
+from app.services.deck_agent.transcript import append_chat_turn
 from app.services.decks import get_owned_deck, serialize_deck
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,7 @@ def iter_deck_agent_sse(
         cards_before = {(c.card_id, c.count) for c in deck.cards}
         patch_error: str | None = None
         seen_tool_results: set[str] = set()
+        assistant_parts: list[str] = []
 
         yield _sse("status", {"message": "教练思考中…", "phase": deck.assistant_phase})
 
@@ -101,6 +103,8 @@ def iter_deck_agent_sse(
                 else:
                     msg_chunk, metadata = item, {}
                 for event, data in _emit_message_chunk(msg_chunk, metadata):
+                    if event == "token":
+                        assistant_parts.append(str(data.get("text") or ""))
                     if event == "tool_result":
                         key = f"{data.get('id')}:{data.get('output')}"
                         if key in seen_tool_results:
@@ -118,6 +122,18 @@ def iter_deck_agent_sse(
         cards_after = {(c.card_id, c.count) for c in deck.cards}
         patch_applied = cards_before != cards_after and not patch_error
         phase = deck.assistant_phase if deck.assistant_phase in ("coaching", "building") else "coaching"
+        assistant_text = "".join(assistant_parts).strip() or "（无文本回复）"
+        try:
+            append_chat_turn(
+                db,
+                deck,
+                user_content=content,
+                assistant_content=assistant_text,
+                patch_applied=patch_applied,
+                patch_error=patch_error,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed mirroring streamed chat turn to transcript")
         yield _sse(
             "done",
             {

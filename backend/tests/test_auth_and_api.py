@@ -102,6 +102,32 @@ def test_decks_require_auth(client: TestClient):
     assert client.get("/api/decks").status_code == 401
 
 
+def test_delete_deck(client: TestClient):
+    token = client.post("/api/auth/register", json={"username": "deleter", "password": "secret1"}).json()[
+        "access_token"
+    ]
+    headers = {"Authorization": f"Bearer {token}"}
+    deck_id = client.post(
+        "/api/decks",
+        headers=headers,
+        json={"name": "待删", "class_slug": "mage", "format": "standard"},
+    ).json()["id"]
+
+    other = client.post("/api/auth/register", json={"username": "nosy", "password": "secret1"}).json()[
+        "access_token"
+    ]
+    assert (
+        client.delete(f"/api/decks/{deck_id}", headers={"Authorization": f"Bearer {other}"}).status_code
+        == 404
+    )
+
+    assert client.delete(f"/api/decks/{deck_id}", headers=headers).status_code == 204
+    assert client.get(f"/api/decks/{deck_id}", headers=headers).status_code == 404
+    listed = client.get("/api/decks", headers=headers)
+    assert listed.status_code == 200
+    assert all(d["id"] != deck_id for d in listed.json())
+
+
 def test_deck_draft_finalize_and_chat(client: TestClient):
     token = client.post("/api/auth/register", json={"username": "bob", "password": "secret1"}).json()[
         "access_token"

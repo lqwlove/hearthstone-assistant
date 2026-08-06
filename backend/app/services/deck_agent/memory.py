@@ -27,6 +27,9 @@ def _make_postgres_pool(conninfo: str):
         min_size=1,
         max_size=8,
         open=True,
+        timeout=30,
+        reconnect_timeout=60,
+        max_idle=300,
     )
 
 

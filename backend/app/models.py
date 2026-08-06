@@ -68,7 +68,7 @@ class Deck(Base):
 
     owner: Mapped[User] = relationship(back_populates="decks")
     cards: Mapped[list[DeckCard]] = relationship(
-        back_populates="deck", cascade="all, delete-orphan", lazy="joined"
+        back_populates="deck", cascade="all, delete-orphan", lazy="selectin"
     )
     chat_thread: Mapped[ChatThread | None] = relationship(
         back_populates="deck", cascade="all, delete-orphan", uselist=False

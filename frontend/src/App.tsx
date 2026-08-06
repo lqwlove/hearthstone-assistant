@@ -21,14 +21,6 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route
-        path="/decks/:id/build"
-        element={
-          <RequireAuth>
-            <BuilderPage />
-          </RequireAuth>
-        }
-      />
-      <Route
         element={
           <RequireAuth>
             <AppShell />
@@ -39,6 +31,7 @@ export default function App() {
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/cards/:id" element={<CardDetailPage />} />
         <Route path="/decks" element={<DecksPage />} />
+        <Route path="/decks/:id/build" element={<BuilderPage />} />
         <Route path="/skills" element={<SkillsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/library" replace />} />

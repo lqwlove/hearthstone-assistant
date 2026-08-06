@@ -23,6 +23,7 @@ from app.services.deck_agent.memory import get_checkpointer, get_store
 from app.services.deck_agent.mock_model import MockCoachModel
 from app.services.deck_agent.skills import BACKEND_ROOT, BUILTIN_SKILLS_DIR, MARKET_SKILLS_DIR, skill_source_roots
 from app.services.deck_agent.tools import build_deck_tools
+from app.services.deck_agent.transcript import append_chat_turn, load_transcript
 from app.services.decks import serialize_deck
 
 logger = logging.getLogger(__name__)
@@ -150,9 +151,9 @@ def _create_agent(db: Session, deck: Deck, settings: Settings) -> Any:
     system_prompt = (
         "你是炉石传说专业组牌教练。用简体中文回复。\n"
         f"当前卡组 id={deck.id} name={deck.name} class={deck.class_slug} "
-        f"format={deck.format} phase={deck.assistant_phase}\n"
-        "coaching 阶段：只澄清需求与给建议，禁止改套。\n"
-        "building 阶段：可调用 apply_deck_patch 等工具改草稿。\n"
+        f"format={deck.format}\n"
+        "澄清用 coach-intake；改套流程用 deck-edit；流派卡池用对应 archetype skill；"
+        "曲线检查用 curve-check。通用改套规则只在 deck-edit，不要在各流派 skill 里重复发明流程。\n"
         "长期偏好写入 /memories/AGENTS.md；技能目录：/agent_skills/builtin/ 与 /data/skill_market/。\n"
         "不要声称能执行 shell 或写业务代码。"
     )
@@ -175,6 +176,26 @@ def _create_agent(db: Session, deck: Deck, settings: Settings) -> Any:
     )
 
 
+def _messages_from_checkpointer(thread_id: str) -> list[Any] | None:
+    """Read raw messages from checkpointer. None = read failed; [] = empty thread."""
+    config = {"configurable": {"thread_id": thread_id}}
+    try:
+        checkpointer = get_checkpointer()
+        get_tuple = getattr(checkpointer, "get_tuple", None)
+        if callable(get_tuple):
+            tup = get_tuple(config)
+            if tup is None:
+                return []
+            checkpoint = getattr(tup, "checkpoint", None) or {}
+            values = checkpoint.get("channel_values") or {}
+            return list(values.get("messages") or [])
+        # Fallback: build agent and use get_state
+        return None
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed reading checkpointer for thread %s", thread_id)
+        return None
+
+
 def get_chat_history(
     db: Session,
     deck: Deck,
@@ -184,14 +205,27 @@ def get_chat_history(
     settings = settings or get_settings()
     tid = thread_id_for(user_id, deck.id)
     config = {"configurable": {"thread_id": tid}}
-    try:
-        agent = _create_agent(db, deck, settings)
-        state = agent.get_state(config)
-        messages = (state.values or {}).get("messages") or []
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed reading agent thread state")
-        return tid, []
-    return tid, _project_messages(list(messages))
+
+    raw = _messages_from_checkpointer(tid)
+    if raw is None:
+        try:
+            agent = _create_agent(db, deck, settings)
+            state = agent.get_state(config)
+            raw = list((state.values or {}).get("messages") or [])
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed reading agent thread state")
+            raw = None
+
+    if raw:
+        projected = _project_messages(raw)
+        if projected:
+            return tid, projected
+
+    # Durable UI mirror (survives checkpointer/pool failures & process restarts)
+    mirrored = load_transcript(db, deck.id)
+    if mirrored:
+        return tid, mirrored
+    return tid, []
 
 
 def run_deck_agent_turn(
@@ -254,4 +288,18 @@ def run_deck_agent_turn(
                 patch_error=patch_error,
             ),
         ]
+
+    assistant_text = next((m.content for m in reversed(new_msgs) if m.role == "assistant"), "（无文本回复）")
+    try:
+        append_chat_turn(
+            db,
+            deck,
+            user_content=content,
+            assistant_content=assistant_text,
+            patch_applied=patch_applied,
+            patch_error=patch_error,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed mirroring chat turn to transcript")
+
     return new_msgs, serialize_deck(deck), patch_applied, patch_error

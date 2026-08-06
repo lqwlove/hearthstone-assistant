@@ -59,7 +59,7 @@ npm run dev
 
 ## 组牌助手（Deep Agents）
 
-- 阶段：`coaching`（澄清）→ 用户点击「开始组牌」→ `building`（可改套）
+- 协作组牌：简短澄清后助手直接用 skill 内 card_id 增量改套（无需「开始组牌」按钮；无搜卡工具）
 - 白名单工具：搜卡 / 读卡组 / 校验 / 应用改套（仅 `building`）
 - 内置 Skills：`backend/agent_skills/builtin/*/SKILL.md`；市场上架包写入 `backend/data/skill_market/`
 - 技能市场：`POST /api/skills/market` 提交；`POST /api/skills/market/{id}/review` + `X-Admin-Token` 审核

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, setAuth } from '../api'
+import brandLogo from '../assets/brand-logo.png'
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -28,7 +29,13 @@ export function RegisterPage() {
   return (
     <div className="auth-page">
       <div className="auth-box">
-        <p className="brand">炉石助手</p>
+        <div className="auth-brand">
+          <img src={brandLogo} alt="" width={56} height={56} />
+          <div className="auth-brand-text">
+            <p className="brand">炉之暗语</p>
+            <p className="brand-en">ArcaneForge</p>
+          </div>
+        </div>
         <p className="muted">创建账号，开始查卡与组套</p>
         <form onSubmit={onSubmit}>
           <label>

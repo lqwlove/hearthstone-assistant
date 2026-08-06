@@ -81,6 +81,7 @@ export const api = {
   createDeck: (body: { name: string; class_slug: string; format: string }) =>
     request<Deck>('/api/decks', { method: 'POST', body: JSON.stringify(body) }),
   getDeck: (id: number) => request<Deck>(`/api/decks/${id}`),
+  deleteDeck: (id: number) => request<void>(`/api/decks/${id}`, { method: 'DELETE' }),
   saveDraft: (id: number, body: { name?: string; cards: { card_id: string; count: number }[] }) =>
     request<Deck>(`/api/decks/${id}/draft`, { method: 'PUT', body: JSON.stringify(body) }),
   validateDeck: (id: number) => request<ValidationResult>(`/api/decks/${id}/validate`, { method: 'POST' }),

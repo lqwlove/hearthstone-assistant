@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Bubble, Sender, ThoughtChain, XProvider } from '@ant-design/x'
-import { Button, Flex, Space, Tag, Typography } from 'antd'
-import type { AssistantPhase, ChatMessage, Deck } from '../types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { FormEvent, KeyboardEvent } from 'react'
+import type { ChatMessage, Deck } from '../types'
 import { getToken } from '../api'
+import sparklesIcon from '../assets/figma/sparkles.svg'
+import sendIcon from '../assets/figma/send.svg'
+import gemIcon from '../assets/figma/gem.svg'
 
 type ThoughtItem = {
   key: string
@@ -24,16 +26,12 @@ type UiMessage = {
 
 type Props = {
   deckId: number
-  phase: AssistantPhase
   history: ChatMessage[]
   busy: boolean
   onBusyChange: (busy: boolean) => void
-  onPhaseChange: (phase: AssistantPhase) => void
   onDeckUpdate: (deck: Deck) => void
   onStatus: (text: string) => void
   onError: (text: string) => void
-  onStartBuilding: () => void
-  onReturnToCoaching: () => void
   persistDraft: () => Promise<unknown>
 }
 
@@ -51,64 +49,34 @@ function historyToUi(history: ChatMessage[]): UiMessage[] {
 
 export function DeckAssistantChat({
   deckId,
-  phase,
   history,
   busy,
   onBusyChange,
-  onPhaseChange,
   onDeckUpdate,
   onStatus,
   onError,
-  onStartBuilding,
-  onReturnToCoaching,
   persistDraft,
 }: Props) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<UiMessage[]>(() => historyToUi(history))
+  const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({})
+  const logRef = useRef<HTMLDivElement>(null)
+  const historySig = useMemo(
+    () => history.map((m) => `${m.id}:${m.role}:${m.content}`).join('\n'),
+    [history],
+  )
 
   useEffect(() => {
+    if (!historySig && messages.some((m) => !m.key.startsWith('h-'))) return
     setMessages(historyToUi(history))
-  }, [history])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historySig, deckId])
 
-  const bubbleItems = useMemo(
-    () =>
-      messages.map((m) => ({
-        key: m.key,
-        role: m.role,
-        content: (
-          <div>
-            {m.thoughts.length > 0 && (
-              <ThoughtChain
-                style={{ marginBottom: 8 }}
-                items={m.thoughts.map((t) => ({
-                  key: t.key,
-                  title: t.title,
-                  description: t.description,
-                  content: t.content ? (
-                    <Typography.Paragraph
-                      style={{ marginBottom: 0, whiteSpace: 'pre-wrap', fontSize: 12 }}
-                    >
-                      {t.content}
-                    </Typography.Paragraph>
-                  ) : undefined,
-                  status: t.status,
-                  collapsible: Boolean(t.content),
-                }))}
-              />
-            )}
-            <div style={{ whiteSpace: 'pre-wrap' }}>{m.content || (m.status === 'loading' ? '…' : '')}</div>
-            {(m.patchApplied || m.patchError) && (
-              <div style={{ marginTop: 6 }}>
-                {m.patchApplied && <Tag color="success">已改套</Tag>}
-                {m.patchError && <Tag color="error">改套失败：{m.patchError}</Tag>}
-              </div>
-            )}
-          </div>
-        ),
-        loading: m.status === 'loading' && !m.content && m.thoughts.length === 0,
-      })),
-    [messages],
-  )
+  useEffect(() => {
+    const el = logRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [messages])
 
   async function send() {
     const text = input.trim()
@@ -246,9 +214,6 @@ export function DeckAssistantChat({
               }
             })
           } else if (eventName === 'done') {
-            if (payload.phase === 'coaching' || payload.phase === 'building') {
-              onPhaseChange(payload.phase)
-            }
             if (payload.deck && typeof payload.deck === 'object') {
               onDeckUpdate(payload.deck as Deck)
             }
@@ -290,55 +255,111 @@ export function DeckAssistantChat({
     }
   }
 
+  function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    void send()
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void send()
+    }
+  }
+
   return (
-    <XProvider>
-      <Flex vertical style={{ height: '100%', minHeight: 0 }} gap={8}>
-        <Flex align="center" justify="space-between" wrap gap={8}>
-          <Space>
-            <Typography.Text strong>组牌助手</Typography.Text>
-            <Tag color={phase === 'building' ? 'processing' : 'default'}>
-              {phase === 'building' ? '组牌中' : '澄清中'}
-            </Tag>
-          </Space>
-          {phase === 'coaching' ? (
-            <Button type="primary" size="small" disabled={busy} onClick={onStartBuilding}>
-              开始组牌
-            </Button>
-          ) : (
-            <Button size="small" disabled={busy} onClick={onReturnToCoaching}>
-              回到澄清
-            </Button>
-          )}
-        </Flex>
-        {phase === 'coaching' && (
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 12 }}>
-            当前为澄清阶段：先聊目标和约束。确认后点击「开始组牌」，助手才能改套。
-          </Typography.Paragraph>
-        )}
-        <div className="antdx-chat-log">
-          <Bubble.List
-            autoScroll
-            style={{ height: '100%' }}
-            role={{
-              user: { placement: 'end' },
-              assistant: { placement: 'start' },
-            }}
-            items={bubbleItems}
-          />
+    <div className="forge-chat">
+      <div className="forge-chat-head">
+        <div className="forge-chat-title">
+          <div className="forge-chat-icon" aria-hidden>
+            <img src={sparklesIcon} alt="" width={16} height={16} />
+          </div>
+          <div>
+            <h2>组牌助手</h2>
+            <p className="forge-chat-status">在线 · 协作组牌</p>
+          </div>
         </div>
-        <Sender
+      </div>
+
+      <p className="forge-chat-hint">
+        说清节奏或流派后，助手会直接往卡组里加减牌；你可以随时要求改某一张。
+      </p>
+
+      <div className="forge-chat-log" ref={logRef}>
+        {messages.length === 0 && (
+          <div className="forge-msg assistant">
+            <div className="forge-msg-role">
+              <img src={gemIcon} alt="" width={12} height={12} />
+              助手
+            </div>
+            <div className="forge-msg-bubble">
+              你好，我是组牌助手。告诉我你想打的节奏、流派、禁卡和预算，定下来我就会直接往卡组里加牌。
+            </div>
+          </div>
+        )}
+        {messages.map((m) => (
+          <div key={m.key} className={`forge-msg ${m.role}`}>
+            <div className="forge-msg-role">
+              {m.role === 'assistant' ? (
+                <>
+                  <img src={gemIcon} alt="" width={12} height={12} />
+                  助手
+                </>
+              ) : (
+                '你'
+              )}
+            </div>
+            {m.thoughts.length > 0 && (
+              <div className="forge-thoughts">
+                {m.thoughts.map((t) => {
+                  const open = expandedThoughts[`${m.key}-${t.key}`]
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      className={`forge-thought ${t.status || ''}`}
+                      onClick={() =>
+                        setExpandedThoughts((prev) => ({
+                          ...prev,
+                          [`${m.key}-${t.key}`]: !prev[`${m.key}-${t.key}`],
+                        }))
+                      }
+                    >
+                      <strong>{t.title}</strong>
+                      {t.description && <span>{t.description}</span>}
+                      {open && t.content && <pre>{t.content}</pre>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className="forge-msg-bubble">
+              {m.content || (m.status === 'loading' ? '…' : '')}
+            </div>
+            {(m.patchApplied || m.patchError) && (
+              <div className="forge-msg-tags">
+                {m.patchApplied && <span className="tag-ok">已改套</span>}
+                {m.patchError && <span className="tag-err">改套失败：{m.patchError}</span>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <form className="forge-chat-composer" onSubmit={onSubmit}>
+        <textarea
           value={input}
-          onChange={setInput}
-          onSubmit={() => void send()}
-          loading={busy}
-          placeholder={
-            phase === 'coaching'
-              ? '先说明目标节奏、禁卡等…确认后点「开始组牌」'
-              : '可以说「改套加入」让助手演示改牌…'
-          }
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
           disabled={busy}
+          rows={2}
+          placeholder="例如：组一套虚空瞎 / 把火球改成 1 张 / 删掉凯恩…"
         />
-      </Flex>
-    </XProvider>
+        <button type="submit" className="forge-ask" disabled={busy || !input.trim()}>
+          <img src={sendIcon} alt="" width={16} height={16} />
+          提问
+        </button>
+      </form>
+    </div>
   )
 }

@@ -82,7 +82,7 @@ def _auth(client: TestClient, username: str = "agent_user") -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_phase_gate_and_thread_memory(client: TestClient):
+def test_incremental_patch_and_thread_memory(client: TestClient):
     headers = _auth(client)
     deck_id = client.post(
         "/api/decks",
@@ -104,7 +104,6 @@ def test_phase_gate_and_thread_memory(client: TestClient):
     )
     assert chat.status_code == 200
     body = chat.json()
-    assert body["phase"] == "coaching"
     assert body["patch_applied"] is False
     assert "澄清" in body["messages"][-1]["content"]
 
@@ -112,19 +111,7 @@ def test_phase_gate_and_thread_memory(client: TestClient):
     hist2 = client.get(f"/api/decks/{deck_id}/chat", headers=headers)
     assert len(hist2.json()["messages"]) >= 2
 
-    # patch blocked while coaching even if user asks
-    blocked = client.post(
-        f"/api/decks/{deck_id}/chat",
-        headers=headers,
-        json={"content": "请帮我改套加入卡牌"},
-    )
-    assert blocked.status_code == 200
-    assert blocked.json()["patch_applied"] is False
-
-    started = client.post(f"/api/decks/{deck_id}/chat/start-building", headers=headers)
-    assert started.status_code == 200
-    assert started.json()["phase"] == "building"
-
+    # no start-building button: agent may patch as soon as user asks
     patched = client.post(
         f"/api/decks/{deck_id}/chat",
         headers=headers,
@@ -133,9 +120,7 @@ def test_phase_gate_and_thread_memory(client: TestClient):
     assert patched.status_code == 200
     assert patched.json()["patch_applied"] is True
     assert patched.json()["deck"]["card_count"] >= 1
-
-    back = client.post(f"/api/decks/{deck_id}/chat/return-to-coaching", headers=headers)
-    assert back.json()["phase"] == "coaching"
+    assert patched.json()["phase"] == "building"
 
 
 def test_non_owner_phase_denied(client: TestClient):
@@ -147,6 +132,33 @@ def test_non_owner_phase_denied(client: TestClient):
     ).json()["id"]
     h2 = _auth(client, "intruder")
     assert client.post(f"/api/decks/{deck_id}/chat/start-building", headers=h2).status_code == 404
+
+
+def test_history_survives_checkpointer_reset(client: TestClient):
+    """Transcript mirror keeps UI history when in-memory checkpointer is wiped."""
+    headers = _auth(client, "mirror_user")
+    deck_id = client.post(
+        "/api/decks",
+        headers=headers,
+        json={"name": "记忆套", "class_slug": "mage", "format": "standard"},
+    ).json()["id"]
+    chat = client.post(
+        f"/api/decks/{deck_id}/chat",
+        headers=headers,
+        json={"content": "我想打中速控制"},
+    )
+    assert chat.status_code == 200
+
+    reset_agent_memory_for_tests()
+    ensure_agent_memory_ready(get_settings())
+
+    hist = client.get(f"/api/decks/{deck_id}/chat", headers=headers)
+    assert hist.status_code == 200
+    msgs = hist.json()["messages"]
+    assert len(msgs) >= 2
+    assert msgs[0]["role"] == "user"
+    assert "中速" in msgs[0]["content"]
+    assert msgs[1]["role"] == "assistant"
 
 
 def test_skill_market_pending_and_approve(client: TestClient):
@@ -266,10 +278,11 @@ def test_apply_tool_phase_gate_unit():
     db.commit()
     db.refresh(deck)
     tools = {t.name: t for t in build_deck_tools(db, deck)}
+    assert "search_cards" not in tools
     out = tools["apply_deck_patch"].invoke({"ops": [{"op": "set_count", "card_id": "1000", "count": 1}]})
-    assert "coaching" in out
-    deck.assistant_phase = "building"
-    db.commit()
-    out2 = tools["apply_deck_patch"].invoke({"ops": [{"op": "set_count", "card_id": "1000", "count": 1}]})
+    assert "已应用" in out
+    db.refresh(deck)
+    assert deck.assistant_phase == "building"
+    out2 = tools["apply_deck_patch"].invoke({"ops": [{"op": "set_count", "card_id": "1000", "count": 0}]})
     assert "已应用" in out2
     db.close()

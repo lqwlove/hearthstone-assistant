@@ -43,6 +43,8 @@ export type Deck = {
   assistant_phase?: AssistantPhase | string
   card_count: number
   cards: DeckCard[]
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export type SkillPack = {

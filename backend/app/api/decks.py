@@ -20,7 +20,11 @@ router = APIRouter(prefix="/decks", tags=["decks"])
 
 @router.get("", response_model=list[DeckOut])
 def list_decks(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[DeckOut]:
-    decks = db.scalars(select(Deck).where(Deck.user_id == user.id).order_by(Deck.updated_at.desc())).all()
+    decks = (
+        db.scalars(select(Deck).where(Deck.user_id == user.id).order_by(Deck.updated_at.desc()))
+        .unique()
+        .all()
+    )
     return [serialize_deck(d) for d in decks]
 
 
@@ -45,6 +49,15 @@ def create_deck(
 @router.get("/{deck_id}", response_model=DeckOut)
 def get_deck(deck_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> DeckOut:
     return serialize_deck(get_owned_deck(db, user, deck_id))
+
+
+@router.delete("/{deck_id}", status_code=204)
+def delete_deck(
+    deck_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> None:
+    deck = get_owned_deck(db, user, deck_id)
+    db.delete(deck)
+    db.commit()
 
 
 @router.put("/{deck_id}/draft", response_model=DeckOut)

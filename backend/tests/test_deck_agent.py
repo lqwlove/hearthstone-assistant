@@ -278,7 +278,9 @@ def test_apply_tool_phase_gate_unit():
     db.commit()
     db.refresh(deck)
     tools = {t.name: t for t in build_deck_tools(db, deck)}
-    assert "search_cards" not in tools
+    assert "search_cards" in tools
+    found = tools["search_cards"].invoke({"q": "卡", "cost": 1})
+    assert "1000" in found
     out = tools["apply_deck_patch"].invoke({"ops": [{"op": "set_count", "card_id": "1000", "count": 1}]})
     assert "已应用" in out
     db.refresh(deck)

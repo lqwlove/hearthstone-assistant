@@ -15,5 +15,12 @@ htmlcov/
 *.egg-info/
 .DS_Store
 backend/data/
+backend/card_wiki/wiki/cards/*
+!backend/card_wiki/wiki/cards/.gitkeep
+backend/card_wiki/raw/*
+!backend/card_wiki/raw/.gitkeep
+!backend/card_wiki/raw/_catalog/
+backend/card_wiki/raw/_catalog/*
+!backend/card_wiki/raw/_catalog/.gitkeep
 *.db
 frontend/dist/

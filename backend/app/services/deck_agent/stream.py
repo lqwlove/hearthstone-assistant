@@ -110,9 +110,24 @@ def iter_deck_agent_sse(
                         if key in seen_tool_results:
                             continue
                         seen_tool_results.add(key)
-                        if str(data.get("output", "")).startswith("错误:"):
-                            patch_error = str(data["output"]).removeprefix("错误:").strip()
+                        out = str(data.get("output") or "")
+                        if out.startswith("错误:"):
+                            patch_error = out.removeprefix("错误:").strip()
                     yield _sse(event, data)
+                    # 改套成功后立刻推卡组快照，供中间牌组区实时刷新
+                    if event == "tool_result":
+                        name = str(data.get("name") or "")
+                        out = str(data.get("output") or "")
+                        if name == "apply_deck_patch" and out.startswith("改套已应用"):
+                            try:
+                                db.expire_all()
+                                live = get_owned_deck(db, user, deck_id)
+                                yield _sse(
+                                    "deck_snapshot",
+                                    {"deck": serialize_deck(live).model_dump(mode="json")},
+                                )
+                            except Exception:  # noqa: BLE001
+                                logger.exception("Failed emitting live deck snapshot")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Agent stream failed")
             yield _sse("error", {"message": str(exc)})

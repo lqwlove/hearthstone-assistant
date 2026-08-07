@@ -253,6 +253,11 @@ export function DeckAssistantChat({
                   : [...m.thoughts, item],
               }
             })
+          } else if (eventName === 'deck_snapshot') {
+            if (payload.deck && typeof payload.deck === 'object') {
+              onDeckUpdate(payload.deck as Deck)
+              onStatus(`${ASSISTANT_DISPLAY_NAME}正在织入卡牌…`)
+            }
           } else if (eventName === 'done') {
             if (payload.deck && typeof payload.deck === 'object') {
               onDeckUpdate(payload.deck as Deck)

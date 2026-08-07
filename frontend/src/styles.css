@@ -2118,8 +2118,73 @@ button.danger-outline:hover:not(:disabled) {
   height: 36px;
   padding: 0 0.7rem 0 0.5rem;
   border-radius: 6px;
+  transform-origin: left center;
+  will-change: transform, opacity, max-height;
 }
 .deck-row:hover { background: rgba(255, 255, 255, 0.03); }
+.deck-row-enter {
+  animation: deck-row-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  background: rgba(159, 122, 234, 0.12);
+}
+.deck-row-exit {
+  animation: deck-row-exit 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+  pointer-events: none;
+}
+.deck-row-bump {
+  animation: deck-row-bump 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.deck-row-bump .deck-row-count {
+  animation: deck-count-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  color: var(--ember);
+  border-color: rgba(255, 158, 44, 0.55);
+}
+@keyframes deck-row-enter {
+  0% {
+    opacity: 0;
+    max-height: 0;
+    transform: translateX(28px) scale(0.96);
+    filter: blur(2px);
+  }
+  55% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    max-height: 40px;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes deck-row-exit {
+  0% {
+    opacity: 1;
+    max-height: 40px;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    transform: translateX(-24px) scale(0.96);
+    filter: blur(1px);
+  }
+}
+@keyframes deck-row-bump {
+  0% { transform: translateX(0); background: transparent; }
+  35% {
+    transform: translateX(4px);
+    background: rgba(255, 158, 44, 0.1);
+  }
+  100% { transform: translateX(0); background: transparent; }
+}
+@keyframes deck-count-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
 .deck-row-mana {
   width: 20px;
   height: 20px;

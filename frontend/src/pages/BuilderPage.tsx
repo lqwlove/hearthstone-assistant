@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { DeckAssistantChat } from '../components/DeckAssistantChat'
+import { useAnimatedDeckLines } from '../hooks/useAnimatedDeckLines'
 import searchIcon from '../assets/figma/search.svg'
 import trashIcon from '../assets/figma/trash.svg'
 import type { Card, ChatMessage, Deck, ValidationResult } from '../types'
@@ -120,26 +121,27 @@ export function BuilderPage() {
     })
   }, [pool, q, classScope, cardType, rarity, manaCost])
 
-  const deckLines = useMemo(() => {
-    return Object.entries(counts)
-      .filter(([, n]) => n > 0)
-      .map(([cardId, count]) => {
-        const card = pool.find((p) => p.id === cardId) || deck?.cards.find((c) => c.card_id === cardId)?.card
-        return { cardId, count, card }
-      })
-      .sort((a, b) => (a.card?.cost ?? 99) - (b.card?.cost ?? 99))
-  }, [counts, pool, deck])
+  const deckLines = useAnimatedDeckLines(counts, pool, deck)
+  const deckListRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const enterId = deckLines.find((l) => l.fx === 'enter')?.cardId
+    if (!enterId || !deckListRef.current) return
+    const el = deckListRef.current.querySelector(`[data-card-id="${enterId}"]`)
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [deckLines])
 
   const manaCurve = useMemo(() => {
     const buckets = Array.from({ length: 8 }, () => 0)
-    for (const { count, card } of deckLines) {
+    const active = deckLines.filter((l) => l.fx !== 'exit')
+    for (const { count, card } of active) {
       const cost = card?.cost
       if (cost == null) continue
       const idx = cost >= 7 ? 7 : Math.max(0, cost)
       buckets[idx] += count
     }
     const max = Math.max(1, ...buckets)
-    const weighted = deckLines.reduce((sum, { count, card }) => sum + (card?.cost ?? 0) * count, 0)
+    const weighted = active.reduce((sum, { count, card }) => sum + (card?.cost ?? 0) * count, 0)
     const avg = total > 0 ? weighted / total : 0
     return { buckets, max, avg }
   }, [deckLines, total])
@@ -398,9 +400,13 @@ export function BuilderPage() {
             </ul>
           )}
 
-          <div className="deck-list-panel">
-            {deckLines.map(({ cardId, count, card }) => (
-              <div key={cardId} className="deck-row">
+          <div className="deck-list-panel" ref={deckListRef}>
+            {deckLines.map(({ cardId, count, card, fx }) => (
+              <div
+                key={cardId}
+                data-card-id={cardId}
+                className={`deck-row${fx ? ` deck-row-${fx}` : ''}`}
+              >
                 <span className="deck-row-mana">{card?.cost ?? '-'}</span>
                 <span className={`deck-row-strip ${rarityStrip(card?.rarity_slug)}`} />
                 <span className="deck-row-name">{card?.name || cardId}</span>
@@ -409,6 +415,7 @@ export function BuilderPage() {
                   className="deck-row-count"
                   onClick={() => setCount(cardId, count - 1)}
                   title="减少一张"
+                  disabled={fx === 'exit'}
                 >
                   {count}x
                 </button>

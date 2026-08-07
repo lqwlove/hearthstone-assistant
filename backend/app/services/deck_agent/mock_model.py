@@ -63,7 +63,9 @@ class MockCoachModel(BaseChatModel):
         del stop, run_manager, kwargs
         if messages and isinstance(messages[-1], ToolMessage):
             content = "已根据工具结果完成这一轮。若还需调整，请继续说明。"
-            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+            return ChatResult(
+                generations=[ChatGeneration(message=AIMessage(content=content))]
+            )
 
         user_text = ""
         for m in reversed(messages):
@@ -72,12 +74,17 @@ class MockCoachModel(BaseChatModel):
                 break
 
         phase = self._phase_from_messages(messages)
-        wants_patch = any(k in user_text for k in ("改套", "加入", "patch", "加一张", "加上", "开始组"))
+        wants_patch = any(
+            k in user_text
+            for k in ("改套", "加入", "patch", "加一张", "加上", "开始组")
+        )
         tool_names = {getattr(t, "name", None) for t in self.bound_tools}
 
         if wants_patch and "apply_deck_patch" in tool_names:
             args = {
-                "ops": [{"op": "set_count", "card_id": self.sample_card_id, "count": 1}],
+                "ops": [
+                    {"op": "set_count", "card_id": self.sample_card_id, "count": 1}
+                ],
             }
             msg = AIMessage(
                 content="正在通过改套工具更新草稿。",
@@ -118,7 +125,9 @@ class MockCoachModel(BaseChatModel):
         else:
             content = "可以说想加/换/删哪张牌；我会用改套工具增量更新草稿。"
 
-        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content=content))]
+        )
 
     def _stream(
         self,
@@ -159,5 +168,7 @@ class MockCoachModel(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ):
-        for chunk in self._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
+        for chunk in self._stream(
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        ):
             yield chunk

@@ -21,7 +21,12 @@ from app.models import Card, Deck
 from app.schemas import ChatMessageOut, DeckOut
 from app.services.deck_agent.memory import get_checkpointer, get_store
 from app.services.deck_agent.mock_model import MockCoachModel
-from app.services.deck_agent.skills import BACKEND_ROOT, BUILTIN_SKILLS_DIR, MARKET_SKILLS_DIR, skill_source_roots
+from app.services.deck_agent.skills import (
+    BACKEND_ROOT,
+    BUILTIN_SKILLS_DIR,
+    MARKET_SKILLS_DIR,
+    skill_source_roots,
+)
 from app.services.deck_agent.tools import build_deck_tools
 from app.services.deck_agent.transcript import append_chat_turn, load_transcript
 from app.services.decks import serialize_deck
@@ -142,7 +147,10 @@ def _create_agent(db: Session, deck: Deck, settings: Settings) -> Any:
     tools = build_deck_tools(db, deck)
     sample = db.scalar(
         select(Card)
-        .where(Card.collectible.is_(True), Card.class_slug.in_([deck.class_slug, "neutral"]))
+        .where(
+            Card.collectible.is_(True),
+            Card.class_slug.in_([deck.class_slug, "neutral"]),
+        )
         .limit(1)
     )
     sample_id = sample.id if sample else "1000"
@@ -152,15 +160,12 @@ def _create_agent(db: Session, deck: Deck, settings: Settings) -> Any:
         "你是炉石传说专业组牌教练。用简体中文回复。\n"
         f"当前卡组 id={deck.id} name={deck.name} class={deck.class_slug} "
         f"format={deck.format}\n"
-        "澄清用 coach-intake；改套用 deck-edit；流派思想用对应 archetype skill（卡表仅参考，非封闭卡池）；"
-        "卡牌/流派建议用 wiki-query 读 /card_wiki/wiki/（先 index 再少量 pages）；"
-        "曲线用 curve-check。优先级：archetype → wiki → search_cards → validate/patch。"
-        "用 search_cards 按思想补位，目标是组满合法 30 张，不要因参考表用尽就停手。\n"
-        "通用改套规则只在 deck-edit，不要在各流派 skill 里重复发明流程。\n"
-        "长期偏好写入 /memories/AGENTS.md；技能目录：/agent_skills/builtin/ 与 /data/skill_market/。"
-        "card wiki 对组牌只读：只用 wiki-query，不要写入 /card_wiki/。"
-        "不要使用 wiki-cold-start / wiki-maintain / wiki-lint（维护不在组牌会话）。\n"
-        "不要声称能执行 shell 或写业务代码。"
+        "澄清用 coach-intake；改套用 deck-edit；流派思想用对应 archetype skill。\n"
+        "选牌：遵循 wiki-query skill，用 grep/read_file 在 /card_wiki/wiki/ 自由检索"
+        "（archetypes/ 与 cards/）；卡库语义已在 wiki，不要寻找 search_cards 之类目录搜索工具。\n"
+        "拿到真实 card_id 后 apply_deck_patch；用 validate_current_deck / curve-check 校验。"
+        "目标组满合法 30 张。wiki 只读，勿写入 /card_wiki/。\n"
+        "长期偏好写入 /memories/AGENTS.md。不要声称能执行 shell 或写业务代码。"
     )
 
     return create_deep_agent(
@@ -170,7 +175,9 @@ def _create_agent(db: Session, deck: Deck, settings: Settings) -> Any:
         skills=["/agent_skills/builtin/", "/data/skill_market/"],
         memory=["/memories/AGENTS.md"],
         permissions=[
-            FilesystemPermission(operations=["write"], paths=["/memories/**"], mode="allow"),
+            FilesystemPermission(
+                operations=["write"], paths=["/memories/**"], mode="allow"
+            ),
             FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
             FilesystemPermission(operations=["read"], paths=["/**"], mode="allow"),
         ],
@@ -262,7 +269,10 @@ def run_deck_agent_turn(
         return projected[-2:], serialize_deck(deck), patch_applied, patch_error
 
     for msg in reversed(list(messages)):
-        if getattr(msg, "type", None) == "tool" or msg.__class__.__name__ == "ToolMessage":
+        if (
+            getattr(msg, "type", None) == "tool"
+            or msg.__class__.__name__ == "ToolMessage"
+        ):
             text = _message_text(getattr(msg, "content", ""))
             if text.startswith("错误:"):
                 patch_error = text.removeprefix("错误:").strip()
@@ -294,7 +304,10 @@ def run_deck_agent_turn(
             ),
         ]
 
-    assistant_text = next((m.content for m in reversed(new_msgs) if m.role == "assistant"), "（无文本回复）")
+    assistant_text = next(
+        (m.content for m in reversed(new_msgs) if m.role == "assistant"),
+        "（无文本回复）",
+    )
     try:
         append_chat_turn(
             db,

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { ChatMessage, Deck } from '../types'
 import { getToken } from '../api'
+import {
+  ASSISTANT_DISPLAY_NAME,
+  formatAgentActionDetail,
+  formatAgentActionTitle,
+} from '../agentLabels'
 import sparklesIcon from '../assets/figma/sparkles.svg'
 import sendIcon from '../assets/figma/send.svg'
 import gemIcon from '../assets/figma/gem.svg'
@@ -12,6 +19,8 @@ type ThoughtItem = {
   description?: string
   content?: string
   status?: 'loading' | 'success' | 'error' | 'abort'
+  toolName?: string
+  toolArgs?: unknown
 }
 
 type UiMessage = {
@@ -45,6 +54,20 @@ function historyToUi(history: ChatMessage[]): UiMessage[] {
     patchApplied: m.patch_applied,
     patchError: m.patch_error,
   }))
+}
+
+function MessageBody({ role, content, loading }: { role: string; content: string; loading?: boolean }) {
+  if (!content) {
+    return <>{loading ? '…' : ''}</>
+  }
+  if (role === 'user') {
+    return <>{content}</>
+  }
+  return (
+    <div className="forge-md">
+      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+    </div>
+  )
 }
 
 export function DeckAssistantChat({
@@ -94,7 +117,14 @@ export function DeckAssistantChat({
         key: asstKey,
         role: 'assistant',
         content: '',
-        thoughts: [{ key: 'think', title: '思考中', status: 'loading', description: '准备调用教练 Agent' }],
+        thoughts: [
+          {
+            key: 'think',
+            title: '构思中',
+            status: 'loading',
+            description: `${ASSISTANT_DISPLAY_NAME} 正在理解你的意图`,
+          },
+        ],
         status: 'loading',
       },
     ])
@@ -156,7 +186,11 @@ export function DeckAssistantChat({
               ...m,
               thoughts: m.thoughts.map((t) =>
                 t.key === 'think'
-                  ? { ...t, description: String(payload.message || '思考中'), status: 'loading' }
+                  ? {
+                      ...t,
+                      description: String(payload.message || '构思中'),
+                      status: 'loading',
+                    }
                   : t,
               ),
             }))
@@ -166,31 +200,32 @@ export function DeckAssistantChat({
               ...m,
               content: m.content + piece,
               thoughts: m.thoughts.map((t) =>
-                t.key === 'think' ? { ...t, title: '思考完成', status: 'success' } : t,
+                t.key === 'think' ? { ...t, title: '构思完成', status: 'success' } : t,
               ),
             }))
           } else if (eventName === 'tool_call') {
             const id = String(payload.id || payload.name || Date.now())
             const name = String(payload.name || 'tool')
-            const args = payload.args ? JSON.stringify(payload.args, null, 0) : ''
+            const args = payload.args
+            const title = formatAgentActionTitle(name, args, 'call')
+            const description = formatAgentActionDetail(name, args)
             updateAssistant((m) => {
-              const exists = m.thoughts.some((t) => t.key === `tool-${id}`)
-              const nextThoughts = exists
-                ? m.thoughts.map((t) =>
-                    t.key === `tool-${id}`
-                      ? { ...t, title: `调用工具：${name}`, description: args, status: 'loading' as const }
-                      : t,
-                  )
-                : [
-                    ...m.thoughts,
-                    {
-                      key: `tool-${id}`,
-                      title: `调用工具：${name}`,
-                      description: args,
-                      status: 'loading' as const,
-                    },
-                  ]
-              return { ...m, thoughts: nextThoughts }
+              const key = `tool-${id}`
+              const exists = m.thoughts.some((t) => t.key === key)
+              const item: ThoughtItem = {
+                key,
+                title,
+                description,
+                status: 'loading',
+                toolName: name,
+                toolArgs: args,
+              }
+              return {
+                ...m,
+                thoughts: exists
+                  ? m.thoughts.map((t) => (t.key === key ? { ...t, ...item } : t))
+                  : [...m.thoughts, item],
+              }
             })
           } else if (eventName === 'tool_result') {
             const id = String(payload.id || payload.name || '')
@@ -199,16 +234,21 @@ export function DeckAssistantChat({
             const status = payload.status === 'error' ? 'error' : 'success'
             updateAssistant((m) => {
               const key = `tool-${id}`
-              const has = m.thoughts.some((t) => t.key === key)
+              const prev = m.thoughts.find((t) => t.key === key)
+              const args = prev?.toolArgs
+              const toolName = prev?.toolName || name
               const item: ThoughtItem = {
                 key,
-                title: `工具结果：${name}`,
+                title: formatAgentActionTitle(toolName, args, 'result'),
+                description: prev?.description || formatAgentActionDetail(toolName, args),
                 content: output,
                 status: status as ThoughtItem['status'],
+                toolName,
+                toolArgs: args,
               }
               return {
                 ...m,
-                thoughts: has
+                thoughts: prev
                   ? m.thoughts.map((t) => (t.key === key ? { ...t, ...item } : t))
                   : [...m.thoughts, item],
               }
@@ -217,8 +257,9 @@ export function DeckAssistantChat({
             if (payload.deck && typeof payload.deck === 'object') {
               onDeckUpdate(payload.deck as Deck)
             }
-            if (payload.patch_applied) onStatus('助手已更新卡组草稿')
-            else if (payload.patch_error) onStatus(`助手回复已保存，但改套未应用：${payload.patch_error}`)
+            if (payload.patch_applied) onStatus(`${ASSISTANT_DISPLAY_NAME}已更新卡组草稿`)
+            else if (payload.patch_error)
+              onStatus(`回复已保存，但改套未应用：${payload.patch_error}`)
             updateAssistant((m) => ({
               ...m,
               status: 'success',
@@ -274,26 +315,22 @@ export function DeckAssistantChat({
           <div className="forge-chat-icon" aria-hidden>
             <img src={sparklesIcon} alt="" width={16} height={16} />
           </div>
-          <div>
-            <h2>组牌助手</h2>
-            <p className="forge-chat-status">在线 · 协作组牌</p>
-          </div>
+          <h2>{ASSISTANT_DISPLAY_NAME}</h2>
         </div>
       </div>
-
-      <p className="forge-chat-hint">
-        说清节奏或流派后，助手会直接往卡组里加减牌；你可以随时要求改某一张。
-      </p>
 
       <div className="forge-chat-log" ref={logRef}>
         {messages.length === 0 && (
           <div className="forge-msg assistant">
             <div className="forge-msg-role">
               <img src={gemIcon} alt="" width={12} height={12} />
-              助手
+              {ASSISTANT_DISPLAY_NAME}
             </div>
             <div className="forge-msg-bubble">
-              你好，我是组牌助手。告诉我你想打的节奏、流派、禁卡和预算，定下来我就会直接往卡组里加牌。
+              <MessageBody
+                role="assistant"
+                content="你好。说出你想编织的节奏与流派，我会为你织入卡牌。"
+              />
             </div>
           </div>
         )}
@@ -303,7 +340,7 @@ export function DeckAssistantChat({
               {m.role === 'assistant' ? (
                 <>
                   <img src={gemIcon} alt="" width={12} height={12} />
-                  助手
+                  {ASSISTANT_DISPLAY_NAME}
                 </>
               ) : (
                 '你'
@@ -333,8 +370,12 @@ export function DeckAssistantChat({
                 })}
               </div>
             )}
-            <div className="forge-msg-bubble">
-              {m.content || (m.status === 'loading' ? '…' : '')}
+            <div className={`forge-msg-bubble${m.role === 'assistant' ? ' forge-msg-bubble-md' : ''}`}>
+              <MessageBody
+                role={m.role}
+                content={m.content}
+                loading={m.status === 'loading'}
+              />
             </div>
             {(m.patchApplied || m.patchError) && (
               <div className="forge-msg-tags">
@@ -353,11 +394,11 @@ export function DeckAssistantChat({
           onKeyDown={onKeyDown}
           disabled={busy}
           rows={2}
-          placeholder="例如：组一套虚空瞎 / 把火球改成 1 张 / 删掉凯恩…"
+          placeholder="例如：织一套虚空瞎 / 把火球改成 1 张…"
         />
-        <button type="submit" className="forge-ask" disabled={busy || !input.trim()}>
-          <img src={sendIcon} alt="" width={16} height={16} />
-          提问
+        <button type="submit" className="forge-ask" disabled={busy || !input.trim()} aria-label="发送">
+          <img src={sendIcon} alt="" width={14} height={14} />
+          发送
         </button>
       </form>
     </div>

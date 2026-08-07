@@ -36,7 +36,7 @@ export function LoginPage() {
             <p className="brand-en">ArcaneForge</p>
           </div>
         </div>
-        <p className="muted">登录后管理卡组与组牌助手</p>
+        <p className="muted">登录后管理卡组与织咒师</p>
         <form onSubmit={onSubmit}>
           <label>
             用户名

@@ -17,7 +17,10 @@ from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import Card, Deck, User
-from app.services.deck_agent.memory import reset_agent_memory_for_tests, ensure_agent_memory_ready
+from app.services.deck_agent.memory import (
+    reset_agent_memory_for_tests,
+    ensure_agent_memory_ready,
+)
 from app.services.deck_agent.skills import validate_skill_md
 from app.services.deck_agent.tools import build_deck_tools
 
@@ -93,9 +96,9 @@ def test_incremental_patch_and_thread_memory(client: TestClient):
     hist = client.get(f"/api/decks/{deck_id}/chat", headers=headers)
     assert hist.status_code == 200
     assert hist.json()["phase"] == "coaching"
-    assert hist.json()["thread_id"] == f"user:1:deck:{deck_id}" or hist.json()["thread_id"].startswith(
-        "user:"
-    )
+    assert hist.json()["thread_id"] == f"user:1:deck:{deck_id}" or hist.json()[
+        "thread_id"
+    ].startswith("user:")
 
     chat = client.post(
         f"/api/decks/{deck_id}/chat",
@@ -131,7 +134,10 @@ def test_non_owner_phase_denied(client: TestClient):
         json={"name": "私有", "class_slug": "mage", "format": "standard"},
     ).json()["id"]
     h2 = _auth(client, "intruder")
-    assert client.post(f"/api/decks/{deck_id}/chat/start-building", headers=h2).status_code == 404
+    assert (
+        client.post(f"/api/decks/{deck_id}/chat/start-building", headers=h2).status_code
+        == 404
+    )
 
 
 def test_history_survives_checkpointer_reset(client: TestClient):
@@ -278,13 +284,17 @@ def test_apply_tool_phase_gate_unit():
     db.commit()
     db.refresh(deck)
     tools = {t.name: t for t in build_deck_tools(db, deck)}
-    assert "search_cards" in tools
-    found = tools["search_cards"].invoke({"q": "卡", "cost": 1})
-    assert "1000" in found
-    out = tools["apply_deck_patch"].invoke({"ops": [{"op": "set_count", "card_id": "1000", "count": 1}]})
+    assert "search_cards" not in tools
+    assert "wiki_query" not in tools
+    assert set(tools) >= {"get_current_deck", "validate_current_deck", "apply_deck_patch"}
+    out = tools["apply_deck_patch"].invoke(
+        {"ops": [{"op": "set_count", "card_id": "1000", "count": 1}]}
+    )
     assert "已应用" in out
     db.refresh(deck)
     assert deck.assistant_phase == "building"
-    out2 = tools["apply_deck_patch"].invoke({"ops": [{"op": "set_count", "card_id": "1000", "count": 0}]})
+    out2 = tools["apply_deck_patch"].invoke(
+        {"ops": [{"op": "set_count", "card_id": "1000", "count": 0}]}
+    )
     assert "已应用" in out2
     db.close()

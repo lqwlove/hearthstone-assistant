@@ -27,12 +27,14 @@ def test_cursor_maintain_skills():
         assert f"name: {name}" in skill.read_text(encoding="utf-8")
 
 
-def test_deck_agent_only_loads_wiki_query():
-    src = (BACKEND_ROOT / "app" / "services" / "deck_agent" / "runtime.py").read_text(encoding="utf-8")
-    assert '"/card_wiki/skills/"' not in src
-    wiki_query = BACKEND_ROOT / "agent_skills" / "builtin" / "wiki-query" / "SKILL.md"
-    assert wiki_query.exists()
-    assert "wiki-query" in wiki_query.read_text(encoding="utf-8")
+def test_deck_agent_uses_wiki_query_skill_not_search_tool():
+    src = (BACKEND_ROOT / "app" / "services" / "deck_agent" / "tools.py").read_text(encoding="utf-8")
+    assert "def search_cards" not in src
+    assert "def wiki_query" not in src
+    skill = BACKEND_ROOT / "agent_skills" / "builtin" / "wiki-query" / "SKILL.md"
+    assert skill.exists()
+    text = skill.read_text(encoding="utf-8")
+    assert "grep" in text and "/card_wiki/wiki/" in text
 
 
 def test_no_wiki_orm_or_llm_cli():

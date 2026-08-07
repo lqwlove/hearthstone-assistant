@@ -415,7 +415,7 @@ export function BuilderPage() {
               </div>
             ))}
             {deckLines.length === 0 && (
-              <p className="muted deck-empty">从左侧加入卡牌，或让右侧助手协助构筑。</p>
+              <p className="muted deck-empty">从左侧加入卡牌，或让右侧织咒师协助构筑。</p>
             )}
           </div>
 

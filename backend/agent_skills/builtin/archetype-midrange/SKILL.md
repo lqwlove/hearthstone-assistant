@@ -1,6 +1,6 @@
 ---
 name: archetype-midrange
-description: 中速构筑思想：平衡曲线、交易与有限终局。适合多数职业中速套。卡表不封闭，按思想 search_cards。
+description: 中速构筑思想：平衡曲线、交易与有限终局。适合多数职业中速套。卡表不封闭，按思想查 wiki。
 ---
 
 # 中速流派框架
@@ -25,7 +25,7 @@ description: 中速构筑思想：平衡曲线、交易与有限终局。适合�
 
 无固定签名表。澄清职业与对抗偏好后：
 
-1. `search_cards` 按费用段找职业+中立可收集牌。
+1. 按 wiki-query 在 `/card_wiki/wiki/` 按费用段与角色 grep/读卡页。
 2. 每档选服务「站场 / 解场 / 过牌 / 终局」角色的牌。
 3. 用 `apply_deck_patch` 组到合法 30 张，再用 `curve-check` 核对。
 

@@ -1,25 +1,38 @@
 ---
 name: wiki-query
-description: 从 card llm-wiki 查询卡牌/流派建议。先读 index，再打开少量 pages；拿真实 card_id 后再改套。
+description: >-
+  从 card llm-wiki 自由检索卡牌与流派建议。组牌选牌时使用：用 grep/read_file 读 wiki，
+  再按思想拼套；不要依赖目录搜索工具。
 ---
 
 # Wiki 查询（wiki-query）
 
-知识库路径：`/card_wiki/wiki/`（约定见 `/card_wiki/SCHEMA.md`）。  
-**官方费用/文本/是否标准以宿主卡牌目录为准**；wiki 提供角色与流派建议。
+卡牌与构筑语义都在文件系统知识库里（冷启动全库薄页 + ingest 加厚）。  
+用 **`read_file` / `grep` / `glob`** 自己查，按思想自由组合；**不要编造 card_id**。
 
-组牌 agent **只加载本 skill**；冷启动 / ingest / lint 由 Cursor 项目 skill `card-llm-wiki` 或其它可写 agent 执行，不要在组牌会话里改 wiki 文件。
+## 路径
 
-## 流程
+| 内容 | 路径 |
+|------|------|
+| Schema | `/card_wiki/SCHEMA.md` |
+| 索引 | `/card_wiki/wiki/index.md`（很大：用 grep，勿整文件读入） |
+| 流派综合 | `/card_wiki/wiki/archetypes/<strategy_key>.md`（如 `zee-shaman.md`） |
+| 单卡 | `/card_wiki/wiki/cards/<card_id>.md` |
 
-1. 读 `/card_wiki/wiki/index.md`，按职业与角色缩小范围。
-2. 打开少量相关页：`/card_wiki/wiki/cards/<card_id>.md`（或 `roles/` / `archetypes/`）。
-3. 看 frontmatter：
-   - `roles`
-   - `strategies.<format>::<strategy_key>`（新文章会覆盖同槽旧 advice）
-4. 确认适合当前 format 与思想后，再用宿主改套工具（如 `apply_deck_patch` / `search_cards`）。
-5. **不要**把 wiki 当作封闭卡池。
+当前卡组的 `format` 见会话上下文；策略键与 archetype skill 对齐（`zee-shaman`、`burn-mage`、`face-hunter`、`void-dh`、`midrange` 等）。
 
-## 优先级（与 deck-edit 一致）
+## 建议检索方式（可自由发挥）
 
-archetype skill 思想 → wiki 建议 → catalog search 补位 → validate / patch。
+1. 读匹配的 archetype skill，明确思想与 `strategy_key`。
+2. 若有流派页：`read_file` `/card_wiki/wiki/archetypes/<strategy_key>.md`。
+3. 在 cards 下 `grep`：
+   - `standard::<strategy_key>` / `wild::<strategy_key>` 找已有建议
+   - 或按 `roles:`、卡名、费用相关关键词收窄
+4. `read_file` 少量相关 `cards/<card_id>.md`，看 frontmatter（`roles`、`strategies`）与正文。
+5. 用真实 `card_id` 调用 `apply_deck_patch`；需要时 `get_current_deck` / `validate_current_deck`。
+
+## 原则
+
+- **Wiki 即卡库语义面**：全库薄页已在；缺建议时可按角色/曲线从同类页里选牌，不必另开目录搜索工具。
+- **思想优先**：服务流派目标与曲线，而不是死抄某一篇参考表。
+- **只读**：不要写入 `/card_wiki/`。
